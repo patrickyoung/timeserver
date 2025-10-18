@@ -1,10 +1,11 @@
 package middleware
 
 import (
-	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"time"
+
+	"github.com/yourorg/timeservice/pkg/logger"
 )
 
 // Middleware is a function that wraps an http.Handler
@@ -19,7 +20,7 @@ func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 }
 
 // Logger logs HTTP requests
-func Logger(logger *slog.Logger) Middleware {
+func Logger(log logger.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -31,7 +32,7 @@ func Logger(logger *slog.Logger) Middleware {
 
 			next.ServeHTTP(wrapped, r)
 
-			logger.Info("request",
+			log.Info("request",
 				"method", r.Method,
 				"path", r.URL.Path,
 				"status", wrapped.statusCode,
@@ -43,12 +44,12 @@ func Logger(logger *slog.Logger) Middleware {
 }
 
 // Recover recovers from panics and logs them
-func Recover(logger *slog.Logger) Middleware {
+func Recover(log logger.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
 				if err := recover(); err != nil {
-					logger.Error("panic recovered",
+					log.Error("panic recovered",
 						"error", err,
 						"path", r.URL.Path,
 						"method", r.Method,
@@ -65,6 +66,9 @@ func Recover(logger *slog.Logger) Middleware {
 }
 
 // CORS adds CORS headers
+// TODO: The wildcard (*) Access-Control-Allow-Origin is insecure for production.
+// Consider using environment variable to configure allowed origins or implement
+// a proper origin validation mechanism for production deployments.
 func CORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

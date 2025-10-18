@@ -12,10 +12,33 @@ type TimeResponse struct {
 
 // NewTimeResponse creates a new TimeResponse from a time.Time
 func NewTimeResponse(t time.Time) *TimeResponse {
+	zone, _ := t.Zone()
 	return &TimeResponse{
 		CurrentTime: t.Format(time.RFC3339Nano),
 		UnixTime:    t.Unix(),
-		Timezone:    "UTC",
+		Timezone:    zone,
 		Formatted:   t.Format(time.RFC3339),
+	}
+}
+
+// ServiceInfo represents the service information response
+type ServiceInfo struct {
+	Service   string            `json:"service"`
+	Version   string            `json:"version"`
+	Endpoints map[string]string `json:"endpoints"`
+	MCPInfo   string            `json:"mcp_info"`
+}
+
+// NewServiceInfo creates a new ServiceInfo with default values
+func NewServiceInfo() *ServiceInfo {
+	return &ServiceInfo{
+		Service: "timeservice",
+		Version: "1.0.0",
+		Endpoints: map[string]string{
+			"time":   "GET /api/time",
+			"health": "GET /health",
+			"mcp":    "POST /mcp",
+		},
+		MCPInfo: "Supports both stdio mode (--stdio flag) and HTTP transport (POST /mcp)",
 	}
 }

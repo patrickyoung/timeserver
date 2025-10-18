@@ -47,8 +47,11 @@ func main() {
 		port = "8080"
 	}
 
-	// Create HTTP handler
-	h := handler.New(logger, mcpServer)
+	// Create StreamableHTTPServer for MCP over HTTP
+	mcpHTTPServer := server.NewStreamableHTTPServer(mcpServer)
+
+	// Create HTTP handler - only needs the StreamableHTTPServer, not the full MCPServer
+	h := handler.New(logger, mcpHTTPServer)
 
 	// Setup router
 	mux := http.NewServeMux()
@@ -63,16 +66,7 @@ func main() {
 	mux.HandleFunc("/mcp", h.MCP)
 
 	// Root endpoint with service info
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Only handle root path, not all unmatched paths
-		if r.URL.Path != "/" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"service":"timeservice","version":"1.0.0","endpoints":{"time":"GET /api/time","health":"GET /health","mcp":"POST /mcp"},"mcp_info":"Supports both stdio mode (--stdio flag) and HTTP transport (POST /mcp)"}`))
-	})
+	mux.HandleFunc("/", h.ServiceInfo)
 
 	// Apply middleware
 	handler := middleware.Chain(

@@ -2,27 +2,26 @@ package handler
 
 import (
 	"encoding/json"
-	"log/slog"
 	"net/http"
+	"reflect"
 	"time"
 
-	"github.com/mark3labs/mcp-go/server"
+	"github.com/yourorg/timeservice/pkg/logger"
+	"github.com/yourorg/timeservice/pkg/mcphttp"
 	"github.com/yourorg/timeservice/pkg/model"
 )
 
 // Handler handles HTTP requests
 type Handler struct {
-	logger        *slog.Logger
-	mcpHTTPServer *server.StreamableHTTPServer
+	logger        logger.Logger
+	mcpHTTPServer mcphttp.Server
 }
 
 // New creates a new handler with MCP support
-func New(logger *slog.Logger, mcpServer *server.MCPServer) *Handler {
-	// Create StreamableHTTPServer for handling MCP over HTTP
-	mcpHTTPServer := server.NewStreamableHTTPServer(mcpServer)
-
+// Accepts interfaces for logger and MCP server for dependency inversion
+func New(log logger.Logger, mcpHTTPServer mcphttp.Server) *Handler {
 	return &Handler{
-		logger:        logger,
+		logger:        log,
 		mcpHTTPServer: mcpHTTPServer,
 	}
 }
@@ -48,9 +47,22 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ServiceInfo returns information about the service and available endpoints
+func (h *Handler) ServiceInfo(w http.ResponseWriter, r *http.Request) {
+	// Only handle root path, not all unmatched paths
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
+	info := model.NewServiceInfo()
+	h.json(w, http.StatusOK, info)
+}
+
 // MCP handles MCP protocol requests over HTTP
 func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
-	if h.mcpHTTPServer == nil {
+	// Check for nil interface or interface with nil value
+	if h.mcpHTTPServer == nil || isNil(h.mcpHTTPServer) {
 		h.error(w, http.StatusInternalServerError, "MCP server not initialized")
 		return
 	}
@@ -71,4 +83,13 @@ func (h *Handler) json(w http.ResponseWriter, status int, data interface{}) {
 // error sends an error JSON response
 func (h *Handler) error(w http.ResponseWriter, status int, message string) {
 	h.json(w, status, map[string]string{"error": message})
+}
+
+// isNil checks if an interface contains a nil value (handles typed nil)
+func isNil(i interface{}) bool {
+	if i == nil {
+		return true
+	}
+	v := reflect.ValueOf(i)
+	return v.Kind() == reflect.Ptr && v.IsNil()
 }

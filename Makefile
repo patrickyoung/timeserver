@@ -1,40 +1,66 @@
-.PHONY: help build run test clean docker
+.PHONY: help test test-verbose test-coverage test-coverage-html build run clean lint
 
-help: ## Show this help message
-	@echo 'Usage: make [target]'
-	@echo ''
-	@echo 'Available targets:'
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
+# Default target
+help:
+	@echo "Available targets:"
+	@echo "  make test                - Run all tests"
+	@echo "  make test-verbose        - Run tests with verbose output"
+	@echo "  make test-coverage       - Run tests with coverage report"
+	@echo "  make test-coverage-html  - Generate HTML coverage report"
+	@echo "  make build               - Build the server binary"
+	@echo "  make run                 - Run the server"
+	@echo "  make clean               - Clean build artifacts and coverage files"
+	@echo "  make lint                - Run linters (requires golangci-lint)"
 
-build: ## Build the server binary
-	@echo "Building server..."
-	go build -o bin/server cmd/server/main.go
-
-run: ## Run the server
-	@echo "Starting server..."
-	go run cmd/server/main.go
-
-test: ## Run tests
+# Run all tests
+test:
 	@echo "Running tests..."
-	go test -v -race -cover ./...
+	@go test ./...
 
-fmt: ## Format code
-	@echo "Formatting code..."
-	go fmt ./...
-	
-lint: fmt ## Lint code
-	@echo "Linting code..."
-	go vet ./...
+# Run tests with verbose output
+test-verbose:
+	@echo "Running tests with verbose output..."
+	@go test -v ./...
 
-clean: ## Clean build artifacts
+# Run tests with coverage
+test-coverage:
+	@echo "Running tests with coverage..."
+	@go test -cover ./...
+	@echo ""
+	@echo "Generating detailed coverage report..."
+	@go test -coverprofile=coverage.out ./...
+	@go tool cover -func=coverage.out
+
+# Generate HTML coverage report
+test-coverage-html: test-coverage
+	@echo "Generating HTML coverage report..."
+	@go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report generated: coverage.html"
+
+# Build the server
+build:
+	@echo "Building server..."
+	@mkdir -p bin
+	@go build -o bin/server ./cmd/server
+	@echo "Build complete: bin/server"
+
+# Run the server
+run: build
+	@echo "Starting server..."
+	@./bin/server
+
+# Clean build artifacts and coverage files
+clean:
 	@echo "Cleaning..."
-	rm -rf bin/
+	@rm -rf bin/
+	@rm -f coverage.out coverage.html
+	@echo "Clean complete"
 
-deps: ## Download dependencies
-	@echo "Downloading dependencies..."
-	go mod download
-	go mod tidy
-
-docker: ## Build Docker image
-	@echo "Building Docker image..."
-	docker build -t timeservice:latest .
+# Run linters (requires golangci-lint to be installed)
+lint:
+	@echo "Running linters..."
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run; \
+	else \
+		echo "golangci-lint not found. Install with: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin"; \
+	fi
