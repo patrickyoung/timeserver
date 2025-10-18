@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "timeservice": {
+      "command": "/home/patrick/Downloads/time-server/bin/server",
+      "args": ["--stdio"],
+      "description": "Time service MCP server providing current time and time offset calculations"
+    }
+  }
+}
