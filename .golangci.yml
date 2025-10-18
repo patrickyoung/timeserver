@@ -1,0 +1,81 @@
+run:
+  timeout: 5m
+  tests: true
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Go vet
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Static analysis
+    - unused        # Check for unused code
+    - gofmt         # Check code formatting
+    - goimports     # Check import formatting
+    - misspell      # Check for misspelled words
+    - revive        # Drop-in replacement for golint
+    - gosec         # Security checks
+    - gocritic      # Opinionated linter
+    - bodyclose     # Check HTTP response bodies are closed
+    - nilerr        # Check nil error returns
+    - nolintlint    # Check nolint directives
+    - unconvert     # Remove unnecessary type conversions
+    - wastedassign  # Find wasted assignments
+    - whitespace    # Check for unnecessary whitespace
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    enable-all: true
+    disable:
+      - shadow  # Too many false positives
+
+  gofmt:
+    simplify: true
+
+  goimports:
+    local-prefixes: github.com/yourorg/timeservice
+
+  revive:
+    rules:
+      - name: exported
+        disabled: false
+      - name: var-naming
+        disabled: false
+      - name: package-comments
+        disabled: true  # Not all packages need comments
+
+  gosec:
+    excludes:
+      - G104  # Audit errors not checked (covered by errcheck)
+
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - style
+      - performance
+    disabled-checks:
+      - hugeParam  # Can be too strict
+
+issues:
+  exclude-rules:
+    # Exclude some linters from test files
+    - path: _test\.go
+      linters:
+        - gosec
+        - errcheck
+
+    # Exclude main.go from requiring package comments
+    - path: cmd/server/main\.go
+      linters:
+        - revive
+
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+output:
+  sort-results: true

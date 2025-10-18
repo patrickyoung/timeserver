@@ -50,6 +50,22 @@ make docker
 docker run -p 8080:8080 timeservice:latest
 ```
 
+### Run with Docker Compose (Hardened)
+
+The project includes a hardened docker-compose.yml with security best practices:
+
+```bash
+docker-compose up
+```
+
+This configuration includes:
+- Read-only root filesystem
+- Dropped capabilities (ALL)
+- No new privileges
+- Resource limits
+- Non-root user execution
+- Tmpfs for writable directories
+
 ## API Endpoints
 
 ### 1. Root Endpoint
@@ -267,13 +283,115 @@ curl -X POST http://localhost:8080/mcp \
 
 ## Configuration
 
-The service can be configured through environment variables:
+The service can be configured through environment variables. All configuration is validated at startup, and the server will fail to start if invalid values are provided.
 
-- `PORT`: Server port (default: `8080`)
+### Server Configuration
 
-Example:
+| Variable | Default | Description | Valid Values |
+|----------|---------|-------------|--------------|
+| `PORT` | `8080` | HTTP server port | `1-65535` |
+| `HOST` | `` (all interfaces) | Bind address | Any valid IP or hostname |
+
+### Logging Configuration
+
+| Variable | Default | Description | Valid Values |
+|----------|---------|-------------|--------------|
+| `LOG_LEVEL` | `info` | Logging level | `debug`, `info`, `warn`, `warning`, `error` |
+
+### CORS Configuration
+
+| Variable | Default | Description | Valid Values |
+|----------|---------|-------------|--------------|
+| `ALLOWED_ORIGINS` | `*` | Allowed CORS origins (comma-separated) | `*` for all, or specific origins like `https://example.com,https://app.example.com` |
+
+**Security Note**: The wildcard (`*`) origin is insecure for production. Always specify explicit origins for production deployments.
+
+### Timeout Configuration
+
+All timeout values use Go duration format (e.g., `10s`, `1m`, `500ms`).
+
+| Variable | Default | Description | Valid Values |
+|----------|---------|-------------|--------------|
+| `READ_TIMEOUT` | `10s` | Maximum duration for reading request | Positive duration |
+| `WRITE_TIMEOUT` | `10s` | Maximum duration for writing response | Positive duration |
+| `IDLE_TIMEOUT` | `60s` | Maximum idle time between requests | Positive duration |
+| `READ_HEADER_TIMEOUT` | `5s` | Maximum duration for reading request headers | Positive duration |
+| `SHUTDOWN_TIMEOUT` | `10s` | Maximum duration for graceful shutdown | Positive duration |
+
+### Resource Limits
+
+| Variable | Default | Description | Valid Values |
+|----------|---------|-------------|--------------|
+| `MAX_HEADER_BYTES` | `1048576` (1MB) | Maximum size of request headers | `1-10485760` (1 byte - 10MB) |
+
+### Configuration Examples
+
+**Basic Production Configuration:**
 ```bash
-PORT=3000 make run
+PORT=8080 \
+LOG_LEVEL=info \
+ALLOWED_ORIGINS="https://example.com,https://app.example.com" \
+READ_TIMEOUT=15s \
+WRITE_TIMEOUT=15s \
+make run
+```
+
+**Development Configuration with Debug Logging:**
+```bash
+PORT=3000 \
+LOG_LEVEL=debug \
+ALLOWED_ORIGINS="*" \
+make run
+```
+
+**High-Performance Configuration:**
+```bash
+PORT=8080 \
+READ_TIMEOUT=5s \
+WRITE_TIMEOUT=5s \
+IDLE_TIMEOUT=30s \
+MAX_HEADER_BYTES=524288 \
+make run
+```
+
+**Docker Compose Configuration:**
+```yaml
+environment:
+  - PORT=8080
+  - LOG_LEVEL=info
+  - ALLOWED_ORIGINS=https://example.com
+  - READ_TIMEOUT=15s
+  - WRITE_TIMEOUT=15s
+```
+
+### Configuration Validation
+
+The server validates all configuration on startup and will exit with an error message if any values are invalid:
+
+```bash
+# Invalid port example
+$ PORT=999999 ./bin/server
+Configuration error: invalid configuration: invalid PORT 999999: must be between 1 and 65535
+
+# Invalid timeout example
+$ READ_TIMEOUT=-5s ./bin/server
+Configuration error: invalid configuration: READ_TIMEOUT must be positive, got -5s
+```
+
+Configuration values are logged at startup (at INFO level) for debugging deployment issues:
+
+```json
+{
+  "time": "2025-10-18T09:22:14Z",
+  "level": "INFO",
+  "msg": "configuration loaded",
+  "port": "8080",
+  "log_level": "INFO",
+  "allowed_origins": ["*"],
+  "read_timeout": 10000000000,
+  "write_timeout": 10000000000,
+  "idle_timeout": 60000000000
+}
 ```
 
 ## Development
@@ -311,6 +429,64 @@ make clean    # Remove build artifacts
 make deps     # Download dependencies
 make docker   # Build Docker image
 ```
+
+### Pre-commit Hooks
+
+The project includes pre-commit hooks to enforce code quality and prevent committing binaries or coverage files.
+
+#### Traditional Git Hooks
+
+A pre-commit hook is automatically installed in `.git/hooks/pre-commit` that prevents committing:
+- Binaries (`.exe`, `.dll`, `.so`, `.dylib`)
+- Build artifacts in `bin/` directory
+- Test binaries (`.test`)
+- Coverage files (`.out`, `.coverprofile`)
+
+The hook runs automatically on every commit. If it detects forbidden files, it will:
+1. Block the commit
+2. Display which files matched forbidden patterns
+3. Provide instructions on how to fix the issue
+
+#### Modern Pre-commit Framework (Optional)
+
+For teams using the [pre-commit framework](https://pre-commit.com/), a `.pre-commit-config.yaml` is provided with additional checks:
+
+**Setup:**
+```bash
+# Install pre-commit (if not already installed)
+pip install pre-commit
+
+# Install the git hooks
+pre-commit install
+
+# Run hooks manually on all files
+pre-commit run --all-files
+```
+
+**Included Checks:**
+- File size limits (max 500KB)
+- Merge conflict detection
+- YAML syntax validation
+- Go formatting (`go fmt`)
+- Go vetting (`go vet`)
+- Go imports organization
+- Go mod tidy
+- Go build verification
+- Go test execution
+- Binary and coverage file prevention
+
+#### .gitignore
+
+The `.gitignore` file prevents accidentally adding:
+- Build artifacts (`bin/`, `*.exe`, etc.)
+- Test binaries (`*.test`)
+- Coverage files (`*.out`, `coverage.html`)
+- IDE files (`.idea/`, `.vscode/`)
+- Environment files (`.env*`)
+- OS files (`.DS_Store`)
+- Temporary files (`tmp/`, `*.tmp`)
+
+All developers should ensure their local builds respect these ignore rules.
 
 ## Architecture
 
@@ -395,6 +571,257 @@ Run the test suite:
 
 ```bash
 make test
+```
+
+Run tests with race detector:
+
+```bash
+make test-race
+```
+
+Generate coverage report:
+
+```bash
+make test-coverage
+```
+
+Generate HTML coverage report:
+
+```bash
+make test-coverage-html
+# Open coverage.html in your browser
+```
+
+## CI/CD Pipeline
+
+This project includes a comprehensive CI/CD pipeline using GitHub Actions that runs on every push and pull request.
+
+### GitHub Actions Workflow
+
+The CI pipeline (`.github/workflows/ci.yml`) includes:
+
+#### Test Job
+- **Multi-version testing**: Tests against Go 1.22, 1.23, and 1.24
+- **Code formatting**: Ensures code is formatted with `go fmt`
+- **Static analysis**: Runs `go vet` to catch common mistakes
+- **Unit tests**: Executes all tests with verbose output
+- **Race detection**: Runs tests with the race detector enabled
+- **Coverage reporting**: Generates and uploads coverage reports
+- **Codecov integration**: Optional upload to Codecov for tracking coverage over time
+
+#### Lint Job
+- **golangci-lint**: Runs comprehensive linting with multiple linters enabled
+- **Timeout**: 5-minute timeout for linting
+- **Parallel execution**: Runs in parallel with tests
+
+#### Build Job
+- **Binary compilation**: Builds the server binary
+- **Artifact upload**: Uploads binary as GitHub artifact (7-day retention)
+- **Size reporting**: Reports binary size
+
+#### Docker Job
+- **Image build**: Builds Docker image using BuildKit
+- **Cache optimization**: Uses GitHub Actions cache for faster builds
+- **Image testing**: Validates the built image
+- **Size reporting**: Reports final image size
+
+#### Security Job
+- **Gosec scanner**: Security-focused Go linter
+- **Trivy scanner**: Vulnerability scanner for dependencies and code
+- **SARIF upload**: Uploads security findings to GitHub Security tab
+
+### Local CI Simulation
+
+Run all CI checks locally before pushing:
+
+```bash
+make ci-local
+```
+
+This runs:
+1. `make deps` - Download and verify dependencies
+2. `make fmt` - Format code
+3. `make vet` - Run go vet
+4. `make lint` - Run golangci-lint
+5. `make test-race` - Run tests with race detector
+6. `make test-coverage` - Generate coverage report
+
+### Linting Configuration
+
+The project uses golangci-lint with a comprehensive configuration (`.golangci.yml`) that includes:
+
+- **Error checking**: errcheck, gosec
+- **Code quality**: gosimple, staticcheck, unused
+- **Style**: gofmt, goimports, revive
+- **Performance**: gocritic with performance checks
+- **Security**: gosec with security-focused checks
+- **Best practices**: bodyclose, nilerr, unconvert
+
+Install golangci-lint:
+
+```bash
+# Linux/macOS
+curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+
+# Or using Go
+go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+```
+
+Run linting locally:
+
+```bash
+make lint
+```
+
+### Coverage Artifacts
+
+Coverage reports are automatically:
+- Generated for each Go version tested
+- Uploaded as GitHub Actions artifacts (30-day retention)
+- Available for download from the Actions tab
+- Optionally uploaded to Codecov for tracking trends
+
+### CI Badge
+
+Add the CI status badge to your README (update repository URL):
+
+```markdown
+[![CI](https://github.com/yourorg/timeservice/workflows/CI/badge.svg)](https://github.com/yourorg/timeservice/actions)
+```
+
+## Container Security Hardening
+
+The Docker image has been hardened following security best practices:
+
+### Dockerfile Security Features
+
+1. **Pinned Base Images**
+   - Uses specific patch versions: `golang:1.24.8-alpine3.21` and `alpine:3.21.0`
+   - Ensures reproducible builds and prevents supply chain attacks
+
+2. **Minimal Attack Surface**
+   - Multi-stage build reduces final image size to ~16MB
+   - Only includes necessary runtime dependencies (ca-certificates, tzdata)
+   - No shell or unnecessary binaries in final image
+
+3. **Non-Root User**
+   - Creates dedicated user `appuser` (UID 10001) and group `appgroup` (GID 10001)
+   - All processes run as non-root by default
+   - Application files owned by non-root user
+
+4. **Timezone Data**
+   - Installed via `apk add --no-cache tzdata` in builder
+   - Copied from `/usr/share/zoneinfo` instead of Go's embedded zoneinfo
+   - Supports all IANA timezones without embedding in binary
+
+5. **Build Security Flags**
+   - `-trimpath`: Removes absolute paths from binary
+   - `-w -s`: Strips debugging information
+   - `-extldflags "-static"`: Creates static binary (no dynamic dependencies)
+   - `go mod verify`: Ensures dependencies haven't been tampered with
+
+6. **Health Check**
+   - Built-in Docker HEALTHCHECK directive
+   - Validates container is functioning correctly
+
+### Runtime Security (Docker/Kubernetes)
+
+The included `docker-compose.yml` and `k8s/deployment.yaml` demonstrate runtime hardening:
+
+**Docker Compose Features:**
+```yaml
+# Read-only root filesystem
+read_only: true
+
+# Drop all capabilities
+cap_drop: - ALL
+
+# Prevent privilege escalation
+security_opt:
+  - no-new-privileges:true
+
+# Resource limits
+deploy:
+  resources:
+    limits:
+      cpus: '0.5'
+      memory: 128M
+```
+
+**Kubernetes Security Context:**
+```yaml
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  seccompProfile:
+    type: RuntimeDefault
+```
+
+### Container Image Scanning
+
+The CI pipeline includes three scanning tools:
+
+1. **Trivy** (Aqua Security)
+   - Scans for OS and application vulnerabilities
+   - Checks for misconfigurations
+   - Results uploaded to GitHub Security tab
+
+2. **Grype** (Anchore)
+   - Multi-source vulnerability database
+   - Catches CVEs across different sources
+   - SARIF format for GitHub integration
+
+3. **Docker Scout**
+   - Official Docker vulnerability scanner
+   - Integrated with Docker Hub CVE database
+   - Provides remediation advice
+
+All scan results are available in:
+- GitHub Actions workflow logs
+- GitHub Security → Code scanning alerts
+- Downloadable SARIF artifacts
+
+### Running with Full Security
+
+**Docker Run:**
+```bash
+docker run -d \
+  --name timeservice \
+  --read-only \
+  --cap-drop=ALL \
+  --security-opt=no-new-privileges:true \
+  --tmpfs /tmp:noexec,nosuid,size=10M \
+  -p 8080:8080 \
+  timeservice:latest
+```
+
+**Docker Compose:**
+```bash
+docker-compose up -d
+```
+
+**Kubernetes:**
+```bash
+kubectl apply -f k8s/deployment.yaml
+```
+
+### Security Verification
+
+Verify the container runs as non-root:
+```bash
+docker run --rm timeservice:latest id
+# Expected: uid=10001(appuser) gid=10001(appgroup)
+```
+
+Check image vulnerabilities:
+```bash
+docker scout cves timeservice:latest
+# Or
+trivy image timeservice:latest
 ```
 
 ## License

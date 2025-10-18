@@ -44,13 +44,13 @@ func TestNewTimeResponse(t *testing.T) {
 
 func TestTimeResponseWithDifferentTimezones(t *testing.T) {
 	tests := []struct {
-		name         string
-		year         int
-		month        time.Month
-		day          int
-		location     string
-		wantZone     string
-		wantOffset   int // offset in seconds from UTC
+		name       string
+		year       int
+		month      time.Month
+		day        int
+		location   string
+		wantZone   string
+		wantOffset int // offset in seconds from UTC
 	}{
 		{
 			name:       "UTC",

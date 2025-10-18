@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# CI/CD
+.github
+.pre-commit-config.yaml
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test files
+*_test.go
+**/*_test.go
+coverage.out
+coverage.html
+*.coverprofile
+*.test
+
+# Documentation
+*.md
+README.md
+LICENSE
+docs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Development
+.env
+.env.*
+docker-compose.yml
+Makefile
+
+# Kubernetes
+k8s/
+
+# Misc
+tmp/
+temp/
+*.tmp
+*.log
+.DS_Store

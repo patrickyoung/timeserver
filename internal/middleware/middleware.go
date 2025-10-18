@@ -64,23 +64,60 @@ func Recover(log *slog.Logger) Middleware {
 	}
 }
 
-// CORS adds CORS headers
-// TODO: The wildcard (*) Access-Control-Allow-Origin is insecure for production.
-// Consider using environment variable to configure allowed origins or implement
-// a proper origin validation mechanism for production deployments.
+// CORSWithOrigins creates a CORS middleware with configurable allowed origins
+func CORSWithOrigins(allowedOrigins []string) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+
+			// Check if origin is allowed
+			allowed := false
+			for _, allowedOrigin := range allowedOrigins {
+				if allowedOrigin == "*" || allowedOrigin == origin {
+					allowed = true
+					break
+				}
+			}
+
+			// Set CORS headers if origin is allowed
+			if allowed {
+				if origin != "" && !contains(allowedOrigins, "*") {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Set("Vary", "Origin")
+				} else if contains(allowedOrigins, "*") {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				}
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			}
+
+			if r.Method == http.MethodOptions {
+				if allowed {
+					w.WriteHeader(http.StatusNoContent)
+				} else {
+					w.WriteHeader(http.StatusForbidden)
+				}
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// CORS is the default CORS middleware with wildcard origin (for backward compatibility)
+// Deprecated: Use CORSWithOrigins instead
 func CORS(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	return CORSWithOrigins([]string{"*"})(next)
+}
 
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
 		}
-
-		next.ServeHTTP(w, r)
-	})
+	}
+	return false
 }
 
 // responseWriter wraps http.ResponseWriter to capture status code

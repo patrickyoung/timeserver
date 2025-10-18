@@ -1,0 +1,39 @@
+# Pre-commit hooks configuration
+# Install pre-commit: pip install pre-commit
+# Setup hooks: pre-commit install
+# Run manually: pre-commit run --all-files
+
+repos:
+  # Check for files that would conflict with .gitignore
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+        args: ['--maxkb=500']
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+
+  # Go-specific checks
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+      - id: go-vet
+      - id: go-imports
+      - id: go-mod-tidy
+      - id: go-build
+      - id: go-test-repo
+
+  # Custom local hook to prevent binaries and coverage files
+  - repo: local
+    hooks:
+      - id: prevent-binaries
+        name: Prevent committing binaries and coverage files
+        entry: bash -c 'if git diff --cached --name-only --diff-filter=ACM | grep -E "(^bin/|\.exe$|\.dll$|\.so$|\.dylib$|\.test$|\.out$|coverage\.)"; then echo "ERROR: Attempting to commit binaries or coverage files. These should be in .gitignore"; exit 1; fi'
+        language: system
+        pass_filenames: false

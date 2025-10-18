@@ -3,17 +3,18 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/yourorg/timeservice/internal/handler"
 	"github.com/yourorg/timeservice/internal/mcpserver"
 	"github.com/yourorg/timeservice/internal/middleware"
+	"github.com/yourorg/timeservice/pkg/config"
 )
 
 func main() {
@@ -21,11 +22,28 @@ func main() {
 	stdio := flag.Bool("stdio", false, "run in stdio mode for MCP communication")
 	flag.Parse()
 
-	// Setup logger
+	// Load and validate configuration
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Setup logger with configured log level
 	// In stdio mode, logs must go to stderr, not stdout (stdout is for MCP protocol)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
+		Level: cfg.LogLevel,
 	}))
+
+	// Log configuration on startup (helps with debugging deployment issues)
+	logger.Info("configuration loaded",
+		"port", cfg.Port,
+		"log_level", cfg.LogLevel.String(),
+		"allowed_origins", cfg.AllowedOrigins,
+		"read_timeout", cfg.ReadTimeout,
+		"write_timeout", cfg.WriteTimeout,
+		"idle_timeout", cfg.IdleTimeout,
+	)
 
 	// Create MCP server
 	mcpServer := mcpserver.NewServer(logger)
@@ -41,11 +59,6 @@ func main() {
 	}
 
 	// Otherwise run HTTP server with both REST endpoints and MCP support
-	// Get port from environment or use default
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
 
 	// Create StreamableHTTPServer for MCP over HTTP
 	mcpHTTPServer := server.NewStreamableHTTPServer(mcpServer)
@@ -68,23 +81,24 @@ func main() {
 	// Root endpoint with service info (handles all methods for backward compatibility)
 	mux.HandleFunc("/", h.ServiceInfo)
 
-	// Apply middleware
+	// Apply middleware with configured CORS origins
 	handler := middleware.Chain(
 		mux,
 		middleware.Logger(logger),
 		middleware.Recover(logger),
-		middleware.CORS,
+		middleware.CORSWithOrigins(cfg.AllowedOrigins),
 	)
 
-	// Configure server
+	// Configure server with timeouts from config
+	addr := cfg.Host + ":" + cfg.Port
 	srv := &http.Server{
-		Addr:              ":" + port,
+		Addr:              addr,
 		Handler:           handler,
-		ReadTimeout:       10 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		ReadHeaderTimeout: 5 * time.Second,
-		MaxHeaderBytes:    1 << 20, // 1MB
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+		MaxHeaderBytes:    cfg.MaxHeaderBytes,
 	}
 
 	// Setup graceful shutdown
@@ -112,8 +126,8 @@ func main() {
 	<-ctx.Done()
 	logger.Info("shutting down server...")
 
-	// Shutdown with timeout
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Shutdown with configured timeout
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {

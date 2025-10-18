@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: timeservice
+  labels:
+    app: timeservice
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: timeservice
+  template:
+    metadata:
+      labels:
+        app: timeservice
+    spec:
+      # Security: Use dedicated service account
+      serviceAccountName: timeservice
+      automountServiceAccountToken: false
+
+      # Security: Pod Security Context
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+
+      containers:
+      - name: timeservice
+        image: timeservice:latest
+        imagePullPolicy: IfNotPresent
+
+        # Security: Container Security Context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 10001
+          runAsGroup: 10001
+          capabilities:
+            drop:
+              - ALL
+          seccompProfile:
+            type: RuntimeDefault
+
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+
+        env:
+        - name: PORT
+          value: "8080"
+
+        # Resource limits
+        resources:
+          limits:
+            cpu: 500m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 64Mi
+
+        # Liveness probe using dedicated healthcheck binary
+        livenessProbe:
+          exec:
+            command:
+            - /app/healthcheck
+          initialDelaySeconds: 5
+          periodSeconds: 30
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        # Readiness probe using dedicated healthcheck binary
+        readinessProbe:
+          exec:
+            command:
+            - /app/healthcheck
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        # Volume mounts for writable directories
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: cache
+          mountPath: /.cache
+
+      # Volumes
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 10Mi
+      - name: cache
+        emptyDir:
+          sizeLimit: 10Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: timeservice
+  labels:
+    app: timeservice
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: timeservice
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: timeservice
+automountServiceAccountToken: false

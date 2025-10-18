@@ -1,16 +1,41 @@
-.PHONY: help test test-verbose test-coverage test-coverage-html build run clean lint
+.PHONY: help deps fmt vet lint test test-verbose test-race test-coverage test-coverage-html build run docker clean ci-local
 
 # Default target
 help:
 	@echo "Available targets:"
+	@echo "  make deps                - Download dependencies"
+	@echo "  make fmt                 - Format code with go fmt"
+	@echo "  make vet                 - Run go vet"
+	@echo "  make lint                - Run golangci-lint"
 	@echo "  make test                - Run all tests"
 	@echo "  make test-verbose        - Run tests with verbose output"
+	@echo "  make test-race           - Run tests with race detector"
 	@echo "  make test-coverage       - Run tests with coverage report"
 	@echo "  make test-coverage-html  - Generate HTML coverage report"
 	@echo "  make build               - Build the server binary"
 	@echo "  make run                 - Run the server"
+	@echo "  make docker              - Build Docker image"
 	@echo "  make clean               - Clean build artifacts and coverage files"
-	@echo "  make lint                - Run linters (requires golangci-lint)"
+	@echo "  make ci-local            - Run all CI checks locally"
+
+# Download dependencies
+deps:
+	@echo "Downloading dependencies..."
+	@go mod download
+	@go mod verify
+	@echo "Dependencies downloaded and verified"
+
+# Format code
+fmt:
+	@echo "Formatting code..."
+	@go fmt ./...
+	@echo "Code formatted"
+
+# Run go vet
+vet:
+	@echo "Running go vet..."
+	@go vet ./...
+	@echo "go vet passed"
 
 # Run all tests
 test:
@@ -21,6 +46,12 @@ test:
 test-verbose:
 	@echo "Running tests with verbose output..."
 	@go test -v ./...
+
+# Run tests with race detector
+test-race:
+	@echo "Running tests with race detector..."
+	@go test -race ./...
+	@echo "Race detector tests passed"
 
 # Run tests with coverage
 test-coverage:
@@ -64,3 +95,16 @@ lint:
 	else \
 		echo "golangci-lint not found. Install with: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $$(go env GOPATH)/bin"; \
 	fi
+
+# Build Docker image
+docker:
+	@echo "Building Docker image..."
+	@docker build -t timeservice:latest .
+	@echo "Docker image built: timeservice:latest"
+
+# Run all CI checks locally
+ci-local: deps fmt vet lint test-race test-coverage
+	@echo ""
+	@echo "========================================"
+	@echo "All CI checks passed! ✓"
+	@echo "========================================"
