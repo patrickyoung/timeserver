@@ -2,8 +2,6 @@ module github.com/yourorg/timeservice
 
 go 1.23.0
 
-toolchain go1.24.8
-
 require github.com/mark3labs/mcp-go v0.41.1
 
 require (

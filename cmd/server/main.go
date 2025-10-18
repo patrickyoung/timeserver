@@ -62,10 +62,10 @@ func main() {
 	// Time endpoint
 	mux.HandleFunc("GET /api/time", h.GetTime)
 
-	// MCP endpoint (HTTP transport)
-	mux.HandleFunc("/mcp", h.MCP)
+	// MCP endpoint (HTTP transport) - POST only for JSON-RPC
+	mux.HandleFunc("POST /mcp", h.MCP)
 
-	// Root endpoint with service info
+	// Root endpoint with service info (handles all methods for backward compatibility)
 	mux.HandleFunc("/", h.ServiceInfo)
 
 	// Apply middleware

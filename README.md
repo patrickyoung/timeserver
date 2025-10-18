@@ -70,10 +70,7 @@ Response:
     "mcp": "POST /mcp",
     "health": "GET /health"
   },
-  "mcp_methods": [
-    "tools/list",
-    "tools/call"
-  ]
+  "mcp_info": "Supports both stdio mode (--stdio flag) and HTTP transport (POST /mcp)"
 }
 ```
 

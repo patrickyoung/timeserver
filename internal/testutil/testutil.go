@@ -1,52 +1,91 @@
 package testutil
 
 import (
+	"context"
+	"log/slog"
 	"net/http"
 	"testing"
 )
 
-// MockLogger is a test logger that captures log calls for verification
-type MockLogger struct {
+// TestLogHandler is a slog.Handler that captures log calls for testing
+type TestLogHandler struct {
 	InfoCalls  []LogCall
 	ErrorCalls []LogCall
 }
 
 // LogCall represents a single log method invocation
 type LogCall struct {
-	Msg  string
-	Args []any
+	Msg   string
+	Level slog.Level
+	Attrs []slog.Attr
 }
 
-// Info implements logger.Logger
-func (m *MockLogger) Info(msg string, args ...any) {
-	m.InfoCalls = append(m.InfoCalls, LogCall{Msg: msg, Args: args})
+// Enabled always returns true for testing
+func (h *TestLogHandler) Enabled(_ context.Context, _ slog.Level) bool {
+	return true
 }
 
-// Error implements logger.Logger
-func (m *MockLogger) Error(msg string, args ...any) {
-	m.ErrorCalls = append(m.ErrorCalls, LogCall{Msg: msg, Args: args})
+// Handle captures log records
+func (h *TestLogHandler) Handle(_ context.Context, r slog.Record) error {
+	attrs := make([]slog.Attr, 0, r.NumAttrs())
+	r.Attrs(func(a slog.Attr) bool {
+		attrs = append(attrs, a)
+		return true
+	})
+
+	call := LogCall{
+		Msg:   r.Message,
+		Level: r.Level,
+		Attrs: attrs,
+	}
+
+	if r.Level == slog.LevelError {
+		h.ErrorCalls = append(h.ErrorCalls, call)
+	} else {
+		h.InfoCalls = append(h.InfoCalls, call)
+	}
+
+	return nil
+}
+
+// WithAttrs returns a new handler with additional attributes
+func (h *TestLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	// For testing, we can ignore attrs and return the same handler
+	return h
+}
+
+// WithGroup returns a new handler with a group
+func (h *TestLogHandler) WithGroup(name string) slog.Handler {
+	// For testing, we can ignore groups and return the same handler
+	return h
 }
 
 // Reset clears all captured log calls
-func (m *MockLogger) Reset() {
-	m.InfoCalls = nil
-	m.ErrorCalls = nil
+func (h *TestLogHandler) Reset() {
+	h.InfoCalls = nil
+	h.ErrorCalls = nil
 }
 
 // AssertInfoCount verifies the number of Info calls
-func (m *MockLogger) AssertInfoCount(t *testing.T, expected int) {
+func (h *TestLogHandler) AssertInfoCount(t *testing.T, expected int) {
 	t.Helper()
-	if len(m.InfoCalls) != expected {
-		t.Errorf("expected %d Info calls, got %d", expected, len(m.InfoCalls))
+	if len(h.InfoCalls) != expected {
+		t.Errorf("expected %d Info calls, got %d", expected, len(h.InfoCalls))
 	}
 }
 
 // AssertErrorCount verifies the number of Error calls
-func (m *MockLogger) AssertErrorCount(t *testing.T, expected int) {
+func (h *TestLogHandler) AssertErrorCount(t *testing.T, expected int) {
 	t.Helper()
-	if len(m.ErrorCalls) != expected {
-		t.Errorf("expected %d Error calls, got %d", expected, len(m.ErrorCalls))
+	if len(h.ErrorCalls) != expected {
+		t.Errorf("expected %d Error calls, got %d", expected, len(h.ErrorCalls))
 	}
+}
+
+// NewTestLogger creates a logger with a TestLogHandler for testing
+func NewTestLogger() (*slog.Logger, *TestLogHandler) {
+	handler := &TestLogHandler{}
+	return slog.New(handler), handler
 }
 
 // MockMCPServer is a test MCP HTTP server

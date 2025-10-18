@@ -3,6 +3,8 @@ package model
 import (
 	"testing"
 	"time"
+
+	"github.com/yourorg/timeservice/pkg/version"
 )
 
 func TestNewTimeResponse(t *testing.T) {
@@ -42,19 +44,49 @@ func TestNewTimeResponse(t *testing.T) {
 
 func TestTimeResponseWithDifferentTimezones(t *testing.T) {
 	tests := []struct {
-		name     string
-		location string
-		wantZone string
+		name         string
+		year         int
+		month        time.Month
+		day          int
+		location     string
+		wantZone     string
+		wantOffset   int // offset in seconds from UTC
 	}{
 		{
-			name:     "UTC",
-			location: "UTC",
-			wantZone: "UTC",
+			name:       "UTC",
+			year:       2024,
+			month:      1,
+			day:        15,
+			location:   "UTC",
+			wantZone:   "UTC",
+			wantOffset: 0,
 		},
 		{
-			name:     "America/New_York",
-			location: "America/New_York",
-			wantZone: "EST", // or EDT depending on date
+			name:       "America/New_York winter (EST)",
+			year:       2024,
+			month:      1,
+			day:        15,
+			location:   "America/New_York",
+			wantZone:   "EST",
+			wantOffset: -5 * 3600, // UTC-5
+		},
+		{
+			name:       "America/New_York summer (EDT)",
+			year:       2024,
+			month:      7,
+			day:        15,
+			location:   "America/New_York",
+			wantZone:   "EDT",
+			wantOffset: -4 * 3600, // UTC-4
+		},
+		{
+			name:       "Asia/Tokyo",
+			year:       2024,
+			month:      1,
+			day:        15,
+			location:   "Asia/Tokyo",
+			wantZone:   "JST",
+			wantOffset: 9 * 3600, // UTC+9
 		},
 	}
 
@@ -65,16 +97,22 @@ func TestTimeResponseWithDifferentTimezones(t *testing.T) {
 				t.Fatalf("failed to load location %s: %v", tt.location, err)
 			}
 
-			fixedTime := time.Date(2024, 1, 15, 10, 30, 45, 0, loc)
+			fixedTime := time.Date(tt.year, tt.month, tt.day, 10, 30, 45, 0, loc)
 			response := NewTimeResponse(fixedTime)
 
 			if response.Timezone == "" {
 				t.Error("expected Timezone to be set")
 			}
 
-			// Verify the timezone is captured
+			// Verify the timezone abbreviation matches
 			if response.Timezone != tt.wantZone {
-				t.Logf("note: got timezone %s (expected %s, may vary)", response.Timezone, tt.wantZone)
+				t.Errorf("expected timezone %s, got %s", tt.wantZone, response.Timezone)
+			}
+
+			// Also verify the UTC offset to make the test more robust
+			_, actualOffset := fixedTime.Zone()
+			if actualOffset != tt.wantOffset {
+				t.Errorf("expected UTC offset %d seconds, got %d seconds", tt.wantOffset, actualOffset)
 			}
 		})
 	}
@@ -84,8 +122,8 @@ func TestNewServiceInfo(t *testing.T) {
 	info := NewServiceInfo()
 
 	// Verify service name
-	if info.Service != "timeservice" {
-		t.Errorf("expected Service 'timeservice', got %s", info.Service)
+	if info.Service != version.ServiceName {
+		t.Errorf("expected Service %s, got %s", version.ServiceName, info.Service)
 	}
 
 	// Verify version is set
@@ -94,8 +132,8 @@ func TestNewServiceInfo(t *testing.T) {
 	}
 
 	// Verify version format
-	if info.Version != "1.0.0" {
-		t.Errorf("expected Version '1.0.0', got %s", info.Version)
+	if info.Version != version.Version {
+		t.Errorf("expected Version %s, got %s", version.Version, info.Version)
 	}
 
 	// Verify endpoints are populated

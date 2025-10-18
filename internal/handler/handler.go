@@ -2,24 +2,22 @@ package handler
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"reflect"
 	"time"
 
-	"github.com/yourorg/timeservice/pkg/logger"
-	"github.com/yourorg/timeservice/pkg/mcphttp"
 	"github.com/yourorg/timeservice/pkg/model"
 )
 
 // Handler handles HTTP requests
 type Handler struct {
-	logger        logger.Logger
-	mcpHTTPServer mcphttp.Server
+	logger        *slog.Logger
+	mcpHTTPServer http.Handler
 }
 
 // New creates a new handler with MCP support
-// Accepts interfaces for logger and MCP server for dependency inversion
-func New(log logger.Logger, mcpHTTPServer mcphttp.Server) *Handler {
+func New(log *slog.Logger, mcpHTTPServer http.Handler) *Handler {
 	return &Handler{
 		logger:        log,
 		mcpHTTPServer: mcpHTTPServer,
@@ -61,6 +59,13 @@ func (h *Handler) ServiceInfo(w http.ResponseWriter, r *http.Request) {
 
 // MCP handles MCP protocol requests over HTTP
 func (h *Handler) MCP(w http.ResponseWriter, r *http.Request) {
+	// Defense in depth: ensure only POST requests are handled
+	// (router already enforces this, but guard here too)
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	// Check for nil interface or interface with nil value
 	if h.mcpHTTPServer == nil || isNil(h.mcpHTTPServer) {
 		h.error(w, http.StatusInternalServerError, "MCP server not initialized")
@@ -86,10 +91,16 @@ func (h *Handler) error(w http.ResponseWriter, status int, message string) {
 }
 
 // isNil checks if an interface contains a nil value (handles typed nil)
+// Checks all kinds that can be nil: pointers, interfaces, channels, functions, maps, and slices
 func isNil(i interface{}) bool {
 	if i == nil {
 		return true
 	}
 	v := reflect.ValueOf(i)
-	return v.Kind() == reflect.Ptr && v.IsNil()
+	switch v.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Chan, reflect.Func, reflect.Map, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
 }

@@ -3,19 +3,20 @@ package mcpserver
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/yourorg/timeservice/pkg/logger"
+	"github.com/yourorg/timeservice/pkg/version"
 )
 
 // NewServer creates and configures a new MCP server with time-related tools
-func NewServer(log logger.Logger) *server.MCPServer {
+func NewServer(log *slog.Logger) *server.MCPServer {
 	// Create server with capabilities and options
 	mcpServer := server.NewMCPServer(
-		"timeservice",
-		"1.0.0",
+		version.ServiceName,
+		version.Version,
 		server.WithToolCapabilities(true),
 		server.WithLogging(),
 		server.WithRecovery(),
@@ -25,8 +26,7 @@ func NewServer(log logger.Logger) *server.MCPServer {
 	getCurrentTimeTool := mcp.NewTool("get_current_time",
 		mcp.WithDescription("Get the current server time in various formats and timezones"),
 		mcp.WithString("format",
-			mcp.Description("Time format: iso8601, unix, unixmilli, rfc3339, or custom Go format"),
-			mcp.Enum("iso8601", "unix", "unixmilli", "rfc3339"),
+			mcp.Description("Time format: iso8601, unix, unixmilli, rfc3339, or custom Go format (e.g., '2006-01-02 15:04')"),
 		),
 		mcp.WithString("timezone",
 			mcp.Description("IANA timezone (e.g., America/New_York, UTC, Europe/London). Defaults to UTC"),
@@ -47,8 +47,10 @@ func NewServer(log logger.Logger) *server.MCPServer {
 			mcp.Description("Minutes to add (can be negative for subtraction)"),
 		),
 		mcp.WithString("format",
-			mcp.Description("Output format: iso8601, unix, unixmilli, or rfc3339"),
-			mcp.Enum("iso8601", "unix", "unixmilli", "rfc3339"),
+			mcp.Description("Output format: iso8601, unix, unixmilli, rfc3339, or custom Go format (e.g., '2006-01-02 15:04')"),
+		),
+		mcp.WithString("timezone",
+			mcp.Description("IANA timezone (e.g., America/New_York, UTC, Europe/London). Defaults to UTC"),
 		),
 	)
 
@@ -57,8 +59,8 @@ func NewServer(log logger.Logger) *server.MCPServer {
 	})
 
 	log.Info("MCP server initialized",
-		"name", "timeservice",
-		"version", "1.0.0",
+		"name", version.ServiceName,
+		"version", version.Version,
 		"tools", []string{"get_current_time", "add_time_offset"},
 	)
 
@@ -66,7 +68,7 @@ func NewServer(log logger.Logger) *server.MCPServer {
 }
 
 // handleGetCurrentTime handles the get_current_time tool
-func handleGetCurrentTime(ctx context.Context, request mcp.CallToolRequest, log logger.Logger) (*mcp.CallToolResult, error) {
+func handleGetCurrentTime(ctx context.Context, request mcp.CallToolRequest, log *slog.Logger) (*mcp.CallToolResult, error) {
 	// Extract arguments using helper methods with defaults
 	format := request.GetString("format", "iso8601")
 	tzName := request.GetString("timezone", "UTC")
@@ -105,18 +107,26 @@ func handleGetCurrentTime(ctx context.Context, request mcp.CallToolRequest, log 
 }
 
 // handleAddTimeOffset handles the add_time_offset tool
-func handleAddTimeOffset(ctx context.Context, request mcp.CallToolRequest, log logger.Logger) (*mcp.CallToolResult, error) {
+func handleAddTimeOffset(ctx context.Context, request mcp.CallToolRequest, log *slog.Logger) (*mcp.CallToolResult, error) {
 	// Extract arguments - GetFloat returns float64
 	hours := request.GetFloat("hours", 0)
 	minutes := request.GetFloat("minutes", 0)
 	format := request.GetString("format", "iso8601")
+	tzName := request.GetString("timezone", "UTC")
+
+	// Load the timezone
+	loc, err := time.LoadLocation(tzName)
+	if err != nil {
+		log.Error("invalid timezone", "timezone", tzName, "error", err)
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid timezone '%s': %v", tzName, err)), nil
+	}
 
 	// Calculate the offset duration
 	// Multiply in float64 space before converting to Duration to handle fractional hours/minutes
 	offset := time.Duration(hours*float64(time.Hour)) + time.Duration(minutes*float64(time.Minute))
 
-	// Get current time and add offset
-	result := time.Now().Add(offset)
+	// Get current time in the specified timezone and add offset
+	result := time.Now().In(loc).Add(offset)
 
 	// Format the result
 	var timeStr string
@@ -135,6 +145,7 @@ func handleAddTimeOffset(ctx context.Context, request mcp.CallToolRequest, log l
 		"hours", hours,
 		"minutes", minutes,
 		"format", format,
+		"timezone", tzName,
 		"result", timeStr,
 	)
 

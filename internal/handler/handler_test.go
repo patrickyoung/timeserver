@@ -11,7 +11,7 @@ import (
 )
 
 func TestGetTime(t *testing.T) {
-	logger := &testutil.MockLogger{}
+	logger, logHandler := testutil.NewTestLogger()
 	mcpServer := &testutil.MockMCPServer{}
 	h := New(logger, mcpServer)
 
@@ -50,11 +50,11 @@ func TestGetTime(t *testing.T) {
 	}
 
 	// Verify logging occurred
-	logger.AssertInfoCount(t, 1)
+	logHandler.AssertInfoCount(t, 1)
 }
 
 func TestHealth(t *testing.T) {
-	logger := &testutil.MockLogger{}
+	logger, _ := testutil.NewTestLogger()
 	mcpServer := &testutil.MockMCPServer{}
 	h := New(logger, mcpServer)
 
@@ -105,7 +105,7 @@ func TestServiceInfo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := &testutil.MockLogger{}
+			logger, _ := testutil.NewTestLogger()
 			mcpServer := &testutil.MockMCPServer{}
 			h := New(logger, mcpServer)
 
@@ -143,18 +143,21 @@ func TestServiceInfo(t *testing.T) {
 func TestMCP(t *testing.T) {
 	tests := []struct {
 		name           string
+		method         string
 		mcpServer      *testutil.MockMCPServer
 		expectedStatus int
 		expectedBody   string
 	}{
 		{
 			name:           "nil server",
+			method:         http.MethodPost,
 			mcpServer:      nil,
 			expectedStatus: http.StatusInternalServerError,
 			expectedBody:   `{"error":"MCP server not initialized"}`,
 		},
 		{
-			name: "server returns OK",
+			name:   "server returns OK",
+			method: http.MethodPost,
 			mcpServer: &testutil.MockMCPServer{
 				ServeHTTPFunc: func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusOK)
@@ -164,14 +167,28 @@ func TestMCP(t *testing.T) {
 			expectedStatus: http.StatusOK,
 			expectedBody:   `{"result":"success"}`,
 		},
+		{
+			name:           "GET method rejected",
+			method:         http.MethodGet,
+			mcpServer:      &testutil.MockMCPServer{},
+			expectedStatus: http.StatusMethodNotAllowed,
+			expectedBody:   "",
+		},
+		{
+			name:           "DELETE method rejected",
+			method:         http.MethodDelete,
+			mcpServer:      &testutil.MockMCPServer{},
+			expectedStatus: http.StatusMethodNotAllowed,
+			expectedBody:   "",
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := &testutil.MockLogger{}
+			logger, _ := testutil.NewTestLogger()
 			h := New(logger, tt.mcpServer)
 
-			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req := httptest.NewRequest(tt.method, "/mcp", nil)
 			w := httptest.NewRecorder()
 
 			h.MCP(w, req)
@@ -180,21 +197,23 @@ func TestMCP(t *testing.T) {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, w.Code)
 			}
 
-			// Decode and compare as JSON to avoid newline issues
-			var gotBody, expectedBody map[string]interface{}
-			if err := json.Unmarshal(w.Body.Bytes(), &gotBody); err != nil {
-				t.Fatalf("failed to decode response body: %v", err)
-			}
-			if err := json.Unmarshal([]byte(tt.expectedBody), &expectedBody); err != nil {
-				t.Fatalf("failed to decode expected body: %v", err)
-			}
+			if tt.expectedBody != "" {
+				// Decode and compare as JSON to avoid newline issues
+				var gotBody, expectedBody map[string]interface{}
+				if err := json.Unmarshal(w.Body.Bytes(), &gotBody); err != nil {
+					t.Fatalf("failed to decode response body: %v", err)
+				}
+				if err := json.Unmarshal([]byte(tt.expectedBody), &expectedBody); err != nil {
+					t.Fatalf("failed to decode expected body: %v", err)
+				}
 
-			// Compare relevant fields
-			for key, expectedVal := range expectedBody {
-				if gotVal, ok := gotBody[key]; !ok {
-					t.Errorf("missing key %q in response", key)
-				} else if gotVal != expectedVal {
-					t.Errorf("for key %q: expected %v, got %v", key, expectedVal, gotVal)
+				// Compare relevant fields
+				for key, expectedVal := range expectedBody {
+					if gotVal, ok := gotBody[key]; !ok {
+						t.Errorf("missing key %q in response", key)
+					} else if gotVal != expectedVal {
+						t.Errorf("for key %q: expected %v, got %v", key, expectedVal, gotVal)
+					}
 				}
 			}
 		})
@@ -203,7 +222,7 @@ func TestMCP(t *testing.T) {
 
 func TestHandlerJSONHelpers(t *testing.T) {
 	t.Run("json helper", func(t *testing.T) {
-		logger := &testutil.MockLogger{}
+		logger, _ := testutil.NewTestLogger()
 		h := New(logger, nil)
 
 		w := httptest.NewRecorder()
@@ -230,7 +249,7 @@ func TestHandlerJSONHelpers(t *testing.T) {
 	})
 
 	t.Run("error helper", func(t *testing.T) {
-		logger := &testutil.MockLogger{}
+		logger, _ := testutil.NewTestLogger()
 		h := New(logger, nil)
 
 		w := httptest.NewRecorder()
@@ -250,4 +269,94 @@ func TestHandlerJSONHelpers(t *testing.T) {
 			t.Errorf("expected 'test error', got %s", result["error"])
 		}
 	})
+}
+
+func TestIsNil(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    interface{}
+		expected bool
+	}{
+		{
+			name:     "untyped nil",
+			value:    nil,
+			expected: true,
+		},
+		{
+			name:     "nil pointer",
+			value:    (*int)(nil),
+			expected: true,
+		},
+		{
+			name:     "non-nil pointer",
+			value:    new(int),
+			expected: false,
+		},
+		{
+			name:     "nil function",
+			value:    (http.HandlerFunc)(nil),
+			expected: true,
+		},
+		{
+			name: "non-nil function",
+			value: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// dummy handler
+			}),
+			expected: false,
+		},
+		{
+			name:     "nil map",
+			value:    (map[string]string)(nil),
+			expected: true,
+		},
+		{
+			name:     "non-nil map",
+			value:    map[string]string{},
+			expected: false,
+		},
+		{
+			name:     "nil slice",
+			value:    ([]string)(nil),
+			expected: true,
+		},
+		{
+			name:     "non-nil slice",
+			value:    []string{},
+			expected: false,
+		},
+		{
+			name:     "nil channel",
+			value:    (chan int)(nil),
+			expected: true,
+		},
+		{
+			name:     "non-nil channel",
+			value:    make(chan int),
+			expected: false,
+		},
+		{
+			name:     "nil interface",
+			value:    (http.Handler)(nil),
+			expected: true,
+		},
+		{
+			name:     "zero value int",
+			value:    0,
+			expected: false,
+		},
+		{
+			name:     "empty string",
+			value:    "",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isNil(tt.value)
+			if result != tt.expected {
+				t.Errorf("isNil(%v) = %v, expected %v", tt.value, result, tt.expected)
+			}
+		})
+	}
 }

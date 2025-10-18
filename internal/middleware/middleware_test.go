@@ -9,7 +9,7 @@ import (
 )
 
 func TestLogger(t *testing.T) {
-	logger := &testutil.MockLogger{}
+	logger, logHandler := testutil.NewTestLogger()
 
 	handler := Logger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -27,17 +27,17 @@ func TestLogger(t *testing.T) {
 	}
 
 	// Verify logging occurred
-	logger.AssertInfoCount(t, 1)
+	logHandler.AssertInfoCount(t, 1)
 
-	if len(logger.InfoCalls) > 0 {
-		logCall := logger.InfoCalls[0]
+	if len(logHandler.InfoCalls) > 0 {
+		logCall := logHandler.InfoCalls[0]
 		if logCall.Msg != "request" {
 			t.Errorf("expected log message 'request', got %s", logCall.Msg)
 		}
 
 		// Verify log contains expected fields (method, path, status, duration_ms, ip)
-		if len(logCall.Args) < 10 { // 5 fields × 2 (key + value)
-			t.Errorf("expected at least 10 log args, got %d", len(logCall.Args))
+		if len(logCall.Attrs) < 5 { // 5 fields
+			t.Errorf("expected at least 5 log attributes, got %d", len(logCall.Attrs))
 		}
 	}
 }
@@ -67,7 +67,7 @@ func TestLoggerCapturesStatusCode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			logger := &testutil.MockLogger{}
+			logger, _ := testutil.NewTestLogger()
 
 			handler := Logger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tt.handlerStatus)
@@ -86,7 +86,7 @@ func TestLoggerCapturesStatusCode(t *testing.T) {
 }
 
 func TestRecover(t *testing.T) {
-	logger := &testutil.MockLogger{}
+	logger, logHandler := testutil.NewTestLogger()
 
 	handler := Recover(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		panic("test panic")
@@ -99,10 +99,10 @@ func TestRecover(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	// Verify error was logged
-	logger.AssertErrorCount(t, 1)
+	logHandler.AssertErrorCount(t, 1)
 
-	if len(logger.ErrorCalls) > 0 {
-		logCall := logger.ErrorCalls[0]
+	if len(logHandler.ErrorCalls) > 0 {
+		logCall := logHandler.ErrorCalls[0]
 		if logCall.Msg != "panic recovered" {
 			t.Errorf("expected log message 'panic recovered', got %s", logCall.Msg)
 		}
@@ -115,7 +115,7 @@ func TestRecover(t *testing.T) {
 }
 
 func TestRecoverDoesNotInterceptNormalFlow(t *testing.T) {
-	logger := &testutil.MockLogger{}
+	logger, logHandler := testutil.NewTestLogger()
 
 	handler := Recover(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -128,7 +128,7 @@ func TestRecoverDoesNotInterceptNormalFlow(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	// Verify no errors were logged
-	logger.AssertErrorCount(t, 0)
+	logHandler.AssertErrorCount(t, 0)
 
 	// Verify normal response
 	if w.Code != http.StatusOK {

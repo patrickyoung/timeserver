@@ -1,11 +1,10 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"time"
-
-	"github.com/yourorg/timeservice/pkg/logger"
 )
 
 // Middleware is a function that wraps an http.Handler
@@ -20,7 +19,7 @@ func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
 }
 
 // Logger logs HTTP requests
-func Logger(log logger.Logger) Middleware {
+func Logger(log *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -44,7 +43,7 @@ func Logger(log logger.Logger) Middleware {
 }
 
 // Recover recovers from panics and logs them
-func Recover(log logger.Logger) Middleware {
+func Recover(log *slog.Logger) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {

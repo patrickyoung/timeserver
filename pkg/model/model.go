@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/yourorg/timeservice/pkg/version"
+)
 
 // TimeResponse represents a time response with various formats
 type TimeResponse struct {
@@ -32,8 +36,8 @@ type ServiceInfo struct {
 // NewServiceInfo creates a new ServiceInfo with default values
 func NewServiceInfo() *ServiceInfo {
 	return &ServiceInfo{
-		Service: "timeservice",
-		Version: "1.0.0",
+		Service: version.ServiceName,
+		Version: version.Version,
 		Endpoints: map[string]string{
 			"time":   "GET /api/time",
 			"health": "GET /health",
