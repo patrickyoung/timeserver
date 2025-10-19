@@ -1,12 +1,15 @@
 package middleware
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/yourorg/timeservice/pkg/auth"
 	"github.com/yourorg/timeservice/pkg/metrics"
 )
 
@@ -230,4 +233,132 @@ func (mrw *metricsResponseWriter) Write(b []byte) (int, error) {
 	n, err := mrw.ResponseWriter.Write(b)
 	mrw.bytesWritten += n
 	return n, err
+}
+
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+const (
+	// ClaimsContextKey is the key for storing auth claims in the request context
+	ClaimsContextKey contextKey = "auth_claims"
+)
+
+// AuthConfig holds configuration for the auth middleware
+type AuthConfig struct {
+	Enabled       bool
+	Authenticator *auth.Authenticator
+	PublicPaths   []string // Paths that don't require authentication
+	Logger        *slog.Logger
+	Metrics       *metrics.Metrics
+}
+
+// Auth creates an authentication middleware that validates JWT tokens
+func Auth(cfg *AuthConfig) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// If auth is disabled, pass through
+			if !cfg.Enabled {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			start := time.Now()
+			path := r.URL.Path
+
+			// Check if this is a public path
+			if isPublicPath(path, cfg.PublicPaths) {
+				cfg.Logger.Debug("public path, skipping auth", "path", path)
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// Extract token from Authorization header
+			authHeader := r.Header.Get("Authorization")
+			token, err := auth.ExtractBearerToken(authHeader)
+			if err != nil {
+				cfg.Logger.Debug("failed to extract bearer token",
+					"error", err,
+					"path", path,
+					"ip", r.RemoteAddr,
+				)
+				if cfg.Metrics != nil {
+					cfg.Metrics.AuthAttemptsTotal.WithLabelValues(path, "missing_token").Inc()
+				}
+				http.Error(w, `{"error": "missing or invalid authorization header"}`, http.StatusUnauthorized)
+				return
+			}
+
+			// Verify token and check authorization
+			claims, err := cfg.Authenticator.VerifyAndAuthorize(r.Context(), token)
+			if err != nil {
+				cfg.Logger.Warn("authentication failed",
+					"error", err,
+					"path", path,
+					"ip", r.RemoteAddr,
+				)
+
+				// Determine error type for metrics
+				status := "invalid_token"
+				if strings.Contains(err.Error(), "missing required") {
+					status = "forbidden"
+				}
+
+				if cfg.Metrics != nil {
+					cfg.Metrics.AuthAttemptsTotal.WithLabelValues(path, status).Inc()
+					cfg.Metrics.AuthTokensVerified.WithLabelValues(status).Inc()
+				}
+
+				// Return appropriate error
+				if status == "forbidden" {
+					http.Error(w, `{"error": "insufficient permissions"}`, http.StatusForbidden)
+				} else {
+					http.Error(w, `{"error": "invalid or expired token"}`, http.StatusUnauthorized)
+				}
+				return
+			}
+
+			// Record successful auth
+			duration := time.Since(start).Seconds()
+			if cfg.Metrics != nil {
+				cfg.Metrics.AuthAttemptsTotal.WithLabelValues(path, "success").Inc()
+				cfg.Metrics.AuthDuration.WithLabelValues(path).Observe(duration)
+				cfg.Metrics.AuthTokensVerified.WithLabelValues("success").Inc()
+			}
+
+			cfg.Logger.Debug("authentication successful",
+				"subject", claims.Subject,
+				"email", claims.Email,
+				"path", path,
+				"duration_ms", time.Since(start).Milliseconds(),
+			)
+
+			// Add claims to request context for handlers to access
+			ctx := context.WithValue(r.Context(), ClaimsContextKey, claims)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// isPublicPath checks if the given path matches any public path pattern
+func isPublicPath(path string, publicPaths []string) bool {
+	for _, publicPath := range publicPaths {
+		// Exact match
+		if path == publicPath {
+			return true
+		}
+		// Wildcard match (e.g., "/api/*")
+		if strings.HasSuffix(publicPath, "/*") {
+			prefix := strings.TrimSuffix(publicPath, "/*")
+			if strings.HasPrefix(path, prefix+"/") || path == prefix {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// GetClaims extracts the auth claims from the request context
+func GetClaims(r *http.Request) (*auth.Claims, bool) {
+	claims, ok := r.Context().Value(ClaimsContextKey).(*auth.Claims)
+	return claims, ok
 }

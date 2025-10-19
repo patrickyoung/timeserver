@@ -19,6 +19,11 @@ type Metrics struct {
 	MCPToolCallDuration  *prometheus.HistogramVec
 	MCPToolCallsInFlight prometheus.Gauge
 
+	// Auth metrics
+	AuthAttemptsTotal  *prometheus.CounterVec
+	AuthDuration       *prometheus.HistogramVec
+	AuthTokensVerified *prometheus.CounterVec
+
 	// Application metrics
 	BuildInfo *prometheus.GaugeVec
 }
@@ -106,6 +111,37 @@ func New(namespace string) *Metrics {
 				Name:      "mcp_tool_calls_in_flight",
 				Help:      "Number of MCP tool calls currently being processed",
 			},
+		),
+
+		// Auth attempt counter by endpoint and status (success, invalid_token, forbidden, etc.)
+		AuthAttemptsTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "auth_attempts_total",
+				Help:      "Total number of authentication attempts",
+			},
+			[]string{"path", "status"},
+		),
+
+		// Auth duration histogram
+		AuthDuration: promauto.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: namespace,
+				Name:      "auth_duration_seconds",
+				Help:      "Authentication duration in seconds",
+				Buckets:   []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1}, // Smaller buckets for auth
+			},
+			[]string{"path"},
+		),
+
+		// Auth tokens verified counter by status
+		AuthTokensVerified: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "auth_tokens_verified_total",
+				Help:      "Total number of tokens verified",
+			},
+			[]string{"status"},
 		),
 
 		// Build info metric (always 1, labeled with version info)

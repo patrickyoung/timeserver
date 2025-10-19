@@ -17,6 +17,7 @@ import (
 	"github.com/yourorg/timeservice/internal/handler"
 	"github.com/yourorg/timeservice/internal/mcpserver"
 	"github.com/yourorg/timeservice/internal/middleware"
+	"github.com/yourorg/timeservice/pkg/auth"
 	"github.com/yourorg/timeservice/pkg/config"
 	"github.com/yourorg/timeservice/pkg/metrics"
 	"github.com/yourorg/timeservice/pkg/version"
@@ -67,6 +68,8 @@ func main() {
 		"read_timeout", cfg.ReadTimeout,
 		"write_timeout", cfg.WriteTimeout,
 		"idle_timeout", cfg.IdleTimeout,
+		"auth_enabled", cfg.AuthEnabled,
+		"oidc_issuer", cfg.OIDCIssuerURL,
 	)
 
 	// Warn if wildcard CORS is configured (security risk)
@@ -78,6 +81,55 @@ func main() {
 			)
 			break
 		}
+	}
+
+	// Initialize authenticator if auth is enabled
+	var authenticator *auth.Authenticator
+	if cfg.AuthEnabled {
+		// Build required roles/permissions/scopes from config
+		var requiredRoles []string
+		if cfg.AuthRequiredRole != "" {
+			requiredRoles = []string{cfg.AuthRequiredRole}
+		}
+		var requiredPermissions []string
+		if cfg.AuthRequiredPermission != "" {
+			requiredPermissions = []string{cfg.AuthRequiredPermission}
+		}
+		var requiredScopes []string
+		if cfg.AuthRequiredScope != "" {
+			requiredScopes = []string{cfg.AuthRequiredScope}
+		}
+
+		authConfig := &auth.Config{
+			IssuerURL:           cfg.OIDCIssuerURL,
+			Audience:            cfg.OIDCAudience,
+			SkipExpiryCheck:     cfg.OIDCSkipExpiryCheck,
+			SkipClientIDCheck:   cfg.OIDCSkipClientIDCheck,
+			SkipIssuerCheck:     cfg.OIDCSkipIssuerCheck,
+			RequiredRoles:       requiredRoles,
+			RequiredPermissions: requiredPermissions,
+			RequiredScopes:      requiredScopes,
+		}
+
+		var err error
+		authenticator, err = auth.NewAuthenticator(context.Background(), authConfig, logger)
+		if err != nil {
+			logger.Error("failed to initialize authenticator", "error", err)
+			os.Exit(1)
+		}
+
+		logger.Info("authentication enabled",
+			"issuer", cfg.OIDCIssuerURL,
+			"audience", cfg.OIDCAudience,
+			"public_paths", cfg.AuthPublicPaths,
+			"required_role", cfg.AuthRequiredRole,
+			"required_permission", cfg.AuthRequiredPermission,
+			"required_scope", cfg.AuthRequiredScope,
+		)
+	} else {
+		logger.Info("authentication disabled - all endpoints are unprotected",
+			"recommendation", "enable auth in production with AUTH_ENABLED=true",
+		)
 	}
 
 	// Initialize Prometheus metrics
@@ -113,13 +165,21 @@ func main() {
 	// Root endpoint with service info (handles all methods for backward compatibility)
 	mux.HandleFunc("/", h.ServiceInfo)
 
-	// Apply middleware with configured CORS origins
+	// Apply middleware with configured CORS origins and auth
 	// Note: Prometheus middleware comes first to capture all request metrics
+	// Auth middleware comes after logging/recovery but before CORS to ensure security
 	handler := middleware.Chain(
 		mux,
 		middleware.Prometheus(metricsCollector),
 		middleware.Logger(logger),
 		middleware.Recover(logger),
+		middleware.Auth(&middleware.AuthConfig{
+			Enabled:       cfg.AuthEnabled,
+			Authenticator: authenticator,
+			PublicPaths:   cfg.AuthPublicPaths,
+			Logger:        logger,
+			Metrics:       metricsCollector,
+		}),
 		middleware.CORSWithOrigins(cfg.AllowedOrigins),
 	)
 

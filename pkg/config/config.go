@@ -30,6 +30,18 @@ type Config struct {
 
 	// Resource limits
 	MaxHeaderBytes int
+
+	// Auth configuration
+	AuthEnabled             bool
+	OIDCIssuerURL           string
+	OIDCAudience            string
+	OIDCSkipExpiryCheck     bool
+	OIDCSkipClientIDCheck   bool
+	OIDCSkipIssuerCheck     bool
+	AuthPublicPaths         []string
+	AuthRequiredRole        string
+	AuthRequiredPermission  string
+	AuthRequiredScope       string
 }
 
 // Load loads configuration from environment variables with validation
@@ -59,6 +71,18 @@ func Load() (*Config, error) {
 		ReadHeaderTimeout: parseDuration(getEnv("READ_HEADER_TIMEOUT", "5s"), 5*time.Second),
 		ShutdownTimeout:   parseDuration(getEnv("SHUTDOWN_TIMEOUT", "10s"), 10*time.Second),
 		MaxHeaderBytes:    parseInt(getEnv("MAX_HEADER_BYTES", "1048576"), 1<<20), // 1MB default
+
+		// Auth configuration
+		AuthEnabled:             parseBool(getEnv("AUTH_ENABLED", "false")),
+		OIDCIssuerURL:           getEnv("OIDC_ISSUER_URL", ""),
+		OIDCAudience:            getEnv("OIDC_AUDIENCE", ""),
+		OIDCSkipExpiryCheck:     parseBool(getEnv("OIDC_SKIP_EXPIRY_CHECK", "false")),
+		OIDCSkipClientIDCheck:   parseBool(getEnv("OIDC_SKIP_CLIENT_ID_CHECK", "false")),
+		OIDCSkipIssuerCheck:     parseBool(getEnv("OIDC_SKIP_ISSUER_CHECK", "false")),
+		AuthPublicPaths:         parseCommaSeparatedList(getEnv("AUTH_PUBLIC_PATHS", "/health,/")),
+		AuthRequiredRole:        getEnv("AUTH_REQUIRED_ROLE", ""),
+		AuthRequiredPermission:  getEnv("AUTH_REQUIRED_PERMISSION", ""),
+		AuthRequiredScope:       getEnv("AUTH_REQUIRED_SCOPE", ""),
 	}
 
 	// Validate configuration
@@ -118,6 +142,24 @@ func (c *Config) Validate() error {
 		if origin == "*" {
 			// This is logged as a warning by the caller - wildcard is dangerous
 			break
+		}
+	}
+
+	// Validate auth configuration if enabled
+	if c.AuthEnabled {
+		if c.OIDCIssuerURL == "" {
+			return fmt.Errorf("OIDC_ISSUER_URL is required when AUTH_ENABLED=true")
+		}
+		if c.OIDCAudience == "" {
+			return fmt.Errorf("OIDC_AUDIENCE is required when AUTH_ENABLED=true")
+		}
+		// Validate issuer URL format
+		if !strings.HasPrefix(c.OIDCIssuerURL, "https://") && !strings.HasPrefix(c.OIDCIssuerURL, "http://") {
+			return fmt.Errorf("OIDC_ISSUER_URL must be a valid HTTP(S) URL, got: %s", c.OIDCIssuerURL)
+		}
+		// Warn if using HTTP in production
+		if strings.HasPrefix(c.OIDCIssuerURL, "http://") && getEnv("ALLOW_HTTP_OIDC_DEV", "") != "true" {
+			return fmt.Errorf("OIDC_ISSUER_URL uses HTTP (insecure). Set ALLOW_HTTP_OIDC_DEV=true for development ONLY")
 		}
 	}
 
@@ -192,6 +234,29 @@ func parseInt(value string, defaultValue int) int {
 		return defaultValue
 	}
 	return i
+}
+
+func parseBool(value string) bool {
+	b, err := strconv.ParseBool(value)
+	if err != nil {
+		return false
+	}
+	return b
+}
+
+func parseCommaSeparatedList(value string) []string {
+	if value == "" {
+		return []string{}
+	}
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 // ParseLogLevelFromEnv parses log level from environment without full config loading

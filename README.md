@@ -6,9 +6,11 @@ A simple Go web service that provides the current server time through both a sta
 
 - **REST API**: Simple endpoint to get current server time
 - **MCP Server**: Model Context Protocol server with time-related tools
+- **Authentication & Authorization**: OAuth2/OIDC with JWT-based claims authorization
 - **Structured Logging**: JSON-formatted logs with slog
 - **Graceful Shutdown**: Proper cleanup on termination signals
-- **Middleware Stack**: Logging, recovery, and CORS support
+- **Middleware Stack**: Logging, recovery, authentication, and CORS support
+- **Prometheus Metrics**: HTTP and MCP metrics including auth metrics
 - **Minimal Docker Image**: Multi-stage build producing <10MB images
 
 ## Quick Start
@@ -368,6 +370,98 @@ All timeout values use Go duration format (e.g., `10s`, `1m`, `500ms`).
 | Variable | Default | Description | Valid Values |
 |----------|---------|-------------|--------------|
 | `MAX_HEADER_BYTES` | `1048576` (1MB) | Maximum size of request headers | `1-10485760` (1 byte - 10MB) |
+
+### Authentication & Authorization Configuration
+
+**SECURITY**: The service supports OAuth2/OIDC authentication with JWT-based authorization using claims (roles, permissions, scopes). Authentication is **opt-in** for backward compatibility but **strongly recommended** for production.
+
+| Variable | Default | Description | Valid Values |
+|----------|---------|-------------|--------------|
+| `AUTH_ENABLED` | `false` | Enable authentication (opt-in) | `true` or `false` |
+| `OIDC_ISSUER_URL` | **REQUIRED if auth enabled** | OIDC provider URL | Valid HTTPS URL (e.g., `https://auth.example.com` or `https://login.microsoftonline.com/{tenant-id}/v2.0`) |
+| `OIDC_AUDIENCE` | **REQUIRED if auth enabled** | Expected audience claim in JWT | Your service identifier (e.g., `timeservice` or `api://timeservice`) |
+| `AUTH_PUBLIC_PATHS` | `/health,/` | Comma-separated list of public paths (no auth) | Path patterns (e.g., `/health,/,/metrics`) |
+| `AUTH_REQUIRED_ROLE` | (none) | Required role for all protected endpoints | Role name (e.g., `time-reader`) |
+| `AUTH_REQUIRED_PERMISSION` | (none) | Required permission for all protected endpoints | Permission string (e.g., `time:read`) |
+| `AUTH_REQUIRED_SCOPE` | (none) | Required OAuth2 scope for all protected endpoints | Scope string (e.g., `time:read`) |
+| `OIDC_SKIP_EXPIRY_CHECK` | `false` | **DANGEROUS**: Skip token expiration check | `true` (dev only) |
+| `OIDC_SKIP_CLIENT_ID_CHECK` | `false` | **DANGEROUS**: Skip audience validation | `true` (dev only) |
+| `OIDC_SKIP_ISSUER_CHECK` | `false` | **DANGEROUS**: Skip issuer validation | `true` (dev only) |
+| `ALLOW_HTTP_OIDC_DEV` | (none) | Allow HTTP (insecure) OIDC issuer for dev | `true` (dev only) |
+
+**Security Notes**:
+- **Production recommendation**: Always enable authentication in production with `AUTH_ENABLED=true`
+- **Provider-agnostic**: Works with any OIDC-compliant provider (Auth0, Okta, Azure Entra ID, Keycloak, AWS Cognito, Google, etc.)
+- **Claims-based authorization**: Fine-grained access control using JWT claims (roles, permissions, scopes)
+- **Stateless**: No database lookups needed; all authorization data is in the JWT
+- **HTTPS required**: OIDC issuer must use HTTPS in production (set `ALLOW_HTTP_OIDC_DEV=true` only for local testing)
+
+**Example - Production with Keycloak:**
+```bash
+AUTH_ENABLED=true \
+OIDC_ISSUER_URL="https://keycloak.example.com/realms/myrealm" \
+OIDC_AUDIENCE="timeservice" \
+AUTH_PUBLIC_PATHS="/health,/" \
+AUTH_REQUIRED_ROLE="time-reader" \
+ALLOWED_ORIGINS="https://app.example.com" \
+./bin/server
+```
+
+**Example - Production with Auth0:**
+```bash
+AUTH_ENABLED=true \
+OIDC_ISSUER_URL="https://your-tenant.auth0.com/" \
+OIDC_AUDIENCE="https://timeservice.example.com" \
+AUTH_PUBLIC_PATHS="/health,/,/metrics" \
+AUTH_REQUIRED_SCOPE="time:read" \
+ALLOWED_ORIGINS="https://app.example.com" \
+./bin/server
+```
+
+**Example - Production with Azure Entra ID:**
+```bash
+AUTH_ENABLED=true \
+OIDC_ISSUER_URL="https://login.microsoftonline.com/{tenant-id}/v2.0" \
+OIDC_AUDIENCE="api://timeservice" \
+AUTH_PUBLIC_PATHS="/health,/" \
+AUTH_REQUIRED_ROLE="time-reader" \
+ALLOWED_ORIGINS="https://app.example.com" \
+./bin/server
+```
+
+**Example - Development (local OIDC for testing):**
+```bash
+AUTH_ENABLED=true \
+OIDC_ISSUER_URL="http://localhost:8080/realms/test" \
+OIDC_AUDIENCE="timeservice" \
+ALLOW_HTTP_OIDC_DEV=true \
+ALLOW_CORS_WILDCARD_DEV=true \
+./bin/server
+```
+
+**Authenticated API Request Example:**
+```bash
+# Obtain JWT token from your OIDC provider first
+TOKEN="eyJhbGc..."
+
+# Make authenticated request
+curl http://localhost:8080/api/time \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+**What happens when auth is disabled (default):**
+```bash
+$ ./bin/server
+{"level":"INFO","msg":"authentication disabled - all endpoints are unprotected","recommendation":"enable auth in production with AUTH_ENABLED=true"}
+```
+
+**What happens when auth is enabled without required config:**
+```bash
+$ AUTH_ENABLED=true ./bin/server
+Configuration error: invalid configuration: OIDC_ISSUER_URL is required when AUTH_ENABLED=true
+```
+
+For detailed authentication setup instructions, provider examples, and security best practices, see [docs/SECURITY.md](docs/SECURITY.md) and [ADR 0005](docs/adr/0005-oauth2-oidc-jwt-authorization.md).
 
 ### Configuration Examples
 
