@@ -27,7 +27,27 @@ func main() {
 	stdio := flag.Bool("stdio", false, "run in stdio mode for MCP communication")
 	flag.Parse()
 
-	// Load and validate configuration
+	// If stdio mode is requested, run with minimal config (no CORS needed)
+	if *stdio {
+		// Minimal logger for stdio mode (logs to stderr)
+		logLevel := config.ParseLogLevelFromEnv()
+		logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
+			Level: logLevel,
+		}))
+
+		logger.Info("starting MCP server in stdio mode")
+
+		// Create basic MCP server without metrics (stdio mode doesn't need HTTP metrics)
+		mcpServer := mcpserver.NewServer(logger)
+
+		if err := server.ServeStdio(mcpServer); err != nil {
+			logger.Error("MCP stdio server error", "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
+	// HTTP mode: Load full configuration with CORS validation
 	cfg, err := config.Load()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Configuration error: %v\n", err)
@@ -35,7 +55,6 @@ func main() {
 	}
 
 	// Setup logger with configured log level
-	// In stdio mode, logs must go to stderr, not stdout (stdout is for MCP protocol)
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{
 		Level: cfg.LogLevel,
 	}))
@@ -67,16 +86,6 @@ func main() {
 
 	// Create MCP server with metrics
 	mcpServer := mcpserver.NewServerWithMetrics(logger, metricsCollector)
-
-	// If stdio mode is requested, run MCP server via stdio and exit
-	if *stdio {
-		logger.Info("starting MCP server in stdio mode")
-		if err := server.ServeStdio(mcpServer); err != nil {
-			logger.Error("MCP stdio server error", "error", err)
-			os.Exit(1)
-		}
-		return
-	}
 
 	// Otherwise run HTTP server with both REST endpoints and MCP support
 

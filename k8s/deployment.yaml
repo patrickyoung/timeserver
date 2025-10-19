@@ -34,8 +34,12 @@ spec:
 
       containers:
       - name: timeservice
-        image: timeservice:latest
-        imagePullPolicy: IfNotPresent
+        # SECURITY: Use versioned tags instead of 'latest' to ensure deterministic deployments
+        # For maximum security, pin to a specific digest:
+        #   image: timeservice@sha256:<digest>
+        # To get the digest: docker inspect --format='{{index .RepoDigests 0}}' timeservice:v1.0.0
+        image: timeservice:v1.0.0
+        imagePullPolicy: Always
 
         # Security: Container Security Context
         securityContext:

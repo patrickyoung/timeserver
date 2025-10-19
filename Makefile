@@ -97,10 +97,13 @@ lint:
 	fi
 
 # Build Docker image
+# Builds with both version tag (for production) and latest tag (for convenience)
 docker:
 	@echo "Building Docker image..."
-	@docker build -t timeservice:latest .
-	@echo "Docker image built: timeservice:latest"
+	@docker build -t timeservice:v1.0.0 -t timeservice:latest .
+	@echo "Docker images built:"
+	@echo "  - timeservice:v1.0.0 (use for production deployments)"
+	@echo "  - timeservice:latest (for local development only)"
 
 # Run all CI checks locally
 ci-local: deps fmt vet lint test-race test-coverage

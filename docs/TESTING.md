@@ -42,16 +42,18 @@ This project follows modern Go testing practices:
 
 ## Test Utilities
 
-### MockLogger
+### TestLogHandler
 
-Captures log calls for verification in tests:
+Captures log calls for verification in tests using slog.Handler interface:
 
 ```go
-logger := &testutil.MockLogger{}
+logger, logHandler := testutil.NewTestLogger()
 // ... run code that logs ...
-logger.AssertInfoCount(t, 1)
-logger.AssertErrorCount(t, 0)
+logHandler.AssertInfoCount(t, 1)
+logHandler.AssertErrorCount(t, 0)
 ```
+
+The `NewTestLogger()` function returns both a `*slog.Logger` (to pass to your code) and a `*TestLogHandler` (to make assertions on logged output).
 
 ### MockMCPServer
 
@@ -169,10 +171,10 @@ for _, tt := range tests {
 
 ### 2. Test Helpers with t.Helper()
 ```go
-func (m *MockLogger) AssertInfoCount(t *testing.T, expected int) {
+func (h *TestLogHandler) AssertInfoCount(t *testing.T, expected int) {
     t.Helper()  // Marks this as a helper function
-    if len(m.InfoCalls) != expected {
-        t.Errorf("expected %d Info calls, got %d", expected, len(m.InfoCalls))
+    if len(h.InfoCalls) != expected {
+        t.Errorf("expected %d Info calls, got %d", expected, len(h.InfoCalls))
     }
 }
 ```
@@ -191,8 +193,8 @@ w := httptest.NewRecorder()
 handler.ServeHTTP(w, req)
 ```
 
-### 5. Dependency Injection with Interfaces
-All dependencies use interfaces defined in `pkg/logger` and `pkg/mcphttp`, making testing with mocks straightforward.
+### 5. Dependency Injection with Standard Interfaces
+Dependencies use standard Go interfaces (e.g., `http.Handler`, `slog.Handler`), making testing with mocks straightforward without custom interface definitions.
 
 ## Future Improvements
 

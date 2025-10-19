@@ -13,6 +13,8 @@ A simple Go web service that provides the current server time through both a sta
 
 ## Quick Start
 
+**IMPORTANT**: The server requires CORS configuration to start. For local development, use the `ALLOW_CORS_WILDCARD_DEV=true` environment variable.
+
 ### Run Locally
 
 #### HTTP Server Mode (for remote access)
@@ -21,16 +23,22 @@ A simple Go web service that provides the current server time through both a sta
 # Download dependencies
 make deps
 
-# Run the server
-make run
+# Run the server (development mode with wildcard CORS)
+ALLOW_CORS_WILDCARD_DEV=true make run
 ```
 
 The server will start on port 8080 (or the port specified in the `PORT` environment variable).
+
+**For production**, always set explicit allowed origins:
+```bash
+ALLOWED_ORIGINS="https://example.com,https://app.example.com" make run
+```
 
 #### Stdio Mode (for Claude Code / MCP clients)
 
 ```bash
 # Run in stdio mode for MCP communication
+# Note: stdio mode doesn't require CORS configuration
 go run cmd/server/main.go --stdio
 ```
 
@@ -40,15 +48,28 @@ This mode communicates via stdin/stdout using JSON-RPC, which is required for Cl
 
 ```bash
 make build
-./bin/server
+
+# Run with development CORS (local only)
+ALLOW_CORS_WILDCARD_DEV=true ./bin/server
+
+# Or with explicit origins (production)
+ALLOWED_ORIGINS="https://example.com" ./bin/server
 ```
 
 ### Run with Docker
 
 ```bash
+# Build image (creates both v1.0.0 and latest tags)
 make docker
-docker run -p 8080:8080 timeservice:latest
+
+# Run with versioned tag (recommended)
+docker run -p 8080:8080 -e ALLOW_CORS_WILDCARD_DEV=true timeservice:v1.0.0
+
+# Or run with latest tag (local dev only)
+docker run -p 8080:8080 -e ALLOW_CORS_WILDCARD_DEV=true timeservice:latest
 ```
+
+**Production Note:** Always use versioned tags (`v1.0.0`) or image digests (`@sha256:...`) for production deployments to ensure deterministic, reproducible deployments. The `latest` tag is mutable and should only be used for local development.
 
 ### Run with Docker Compose (Hardened)
 
@@ -441,19 +462,33 @@ If wildcard CORS is detected (via `ALLOW_CORS_WILDCARD_DEV=true`), a warning wil
 
 ```
 timeservice/
-├── cmd/server/          # Application entry point
-│   └── main.go
+├── cmd/                 # Command-line applications
+│   ├── server/          # Main server application
+│   │   └── main.go
+│   └── healthcheck/     # Healthcheck utility
+│       └── main.go
 ├── internal/            # Private application code
 │   ├── handler/         # HTTP handlers
-│   ├── mcpserver/      # MCP server implementation (using mcp-go SDK)
-│   └── middleware/     # HTTP middleware
-├── pkg/                # Public packages
-│   └── model/          # Data models
-├── bin/                # Compiled binaries
-├── mcp-config.json     # Example MCP configuration for Claude Desktop
-├── run-mcp.sh          # Helper script to run in stdio mode
-├── Makefile            # Build commands
-├── Dockerfile          # Container image
+│   ├── mcpserver/       # MCP server implementation (using mcp-go SDK)
+│   ├── middleware/      # HTTP middleware (CORS, logging, metrics, recovery)
+│   └── testutil/        # Testing utilities
+├── pkg/                 # Public packages
+│   ├── config/          # Configuration management
+│   ├── metrics/         # Prometheus metrics
+│   ├── model/           # Data models
+│   └── version/         # Version information
+├── k8s/                 # Kubernetes deployment manifests
+│   ├── deployment.yaml  # K8s deployment with ServiceMonitor
+│   └── prometheus.yml   # Sample Prometheus configuration
+├── docs/                # Documentation
+│   └── TESTING.md       # Testing guide
+├── bin/                 # Compiled binaries (gitignored)
+│   ├── server           # Main server binary
+│   └── healthcheck      # Healthcheck binary
+├── run-mcp.sh           # Helper script to run in stdio mode
+├── Makefile             # Build commands
+├── Dockerfile           # Multi-stage container image
+├── docker-compose.yml   # Docker Compose configuration
 └── README.md
 ```
 
@@ -837,7 +872,8 @@ docker run -d \
   --security-opt=no-new-privileges:true \
   --tmpfs /tmp:noexec,nosuid,size=10M \
   -p 8080:8080 \
-  timeservice:latest
+  -e ALLOW_CORS_WILDCARD_DEV=true \
+  timeservice:v1.0.0
 ```
 
 **Docker Compose:**
@@ -847,22 +883,32 @@ docker-compose up -d
 
 **Kubernetes:**
 ```bash
+# Build and tag image for production
+docker build -t timeservice:v1.0.0 .
+
+# Push to your container registry (update with your registry)
+# docker tag timeservice:v1.0.0 your-registry.com/timeservice:v1.0.0
+# docker push your-registry.com/timeservice:v1.0.0
+
+# Deploy to Kubernetes
 kubectl apply -f k8s/deployment.yaml
 ```
+
+**Note:** The Kubernetes deployment uses `image: timeservice:v1.0.0` for deterministic deployments. Update `k8s/deployment.yaml` with your registry URL and credentials if deploying to a real cluster.
 
 ### Security Verification
 
 Verify the container runs as non-root:
 ```bash
-docker run --rm timeservice:latest id
+docker run --rm timeservice:v1.0.0 id
 # Expected: uid=10001(appuser) gid=10001(appgroup)
 ```
 
 Check image vulnerabilities:
 ```bash
-docker scout cves timeservice:latest
+docker scout cves timeservice:v1.0.0
 # Or
-trivy image timeservice:latest
+trivy image timeservice:v1.0.0
 ```
 
 ## Prometheus Observability

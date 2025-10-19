@@ -193,3 +193,9 @@ func parseInt(value string, defaultValue int) int {
 	}
 	return i
 }
+
+// ParseLogLevelFromEnv parses log level from environment without full config loading
+// This is useful for stdio mode which doesn't need CORS configuration
+func ParseLogLevelFromEnv() slog.Level {
+	return parseLogLevel(getEnv("LOG_LEVEL", "info"))
+}

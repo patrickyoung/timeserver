@@ -5,7 +5,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: timeservice:latest
+    # Note: While 'latest' is acceptable for local dev, we use versioned tags for consistency
+    # This matches the production k8s deployment which uses timeservice:v1.0.0
+    image: timeservice:v1.0.0
     container_name: timeservice
 
     # Security: Run as non-root user (already set in Dockerfile)

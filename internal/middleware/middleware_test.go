@@ -281,3 +281,72 @@ func TestResponseWriterDoesNotWriteHeaderTwice(t *testing.T) {
 		t.Errorf("expected statusCode %d, got %d", http.StatusCreated, rw.statusCode)
 	}
 }
+
+func TestComputeApproximateRequestSize(t *testing.T) {
+	tests := []struct {
+		name           string
+		method         string
+		path           string
+		headers        map[string]string
+		contentLength  int64
+		expectPositive bool
+		expectMinSize  int
+	}{
+		{
+			name:           "GET request without body (ContentLength -1)",
+			method:         "GET",
+			path:           "/api/time",
+			headers:        map[string]string{"User-Agent": "test"},
+			contentLength:  -1, // Sentinel value for unknown/not set
+			expectPositive: true,
+			expectMinSize:  10, // At least method + path
+		},
+		{
+			name:           "POST request with body",
+			method:         "POST",
+			path:           "/mcp",
+			headers:        map[string]string{"Content-Type": "application/json"},
+			contentLength:  100,
+			expectPositive: true,
+			expectMinSize:  100, // Should include body size
+		},
+		{
+			name:           "POST request with zero ContentLength",
+			method:         "POST",
+			path:           "/api/test",
+			headers:        map[string]string{},
+			contentLength:  0,
+			expectPositive: true,
+			expectMinSize:  10,
+		},
+		{
+			name:           "Request with large body",
+			method:         "PUT",
+			path:           "/upload",
+			headers:        map[string]string{"Content-Type": "application/octet-stream"},
+			contentLength:  1048576, // 1MB
+			expectPositive: true,
+			expectMinSize:  1048576,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			req.ContentLength = tt.contentLength
+
+			size := computeApproximateRequestSize(req)
+
+			if tt.expectPositive && size < 0 {
+				t.Errorf("expected positive size, got %d (ContentLength was %d)", size, tt.contentLength)
+			}
+
+			if size < tt.expectMinSize {
+				t.Errorf("expected size >= %d, got %d", tt.expectMinSize, size)
+			}
+		})
+	}
+}

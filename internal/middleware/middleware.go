@@ -176,8 +176,11 @@ func computeApproximateRequestSize(r *http.Request) int {
 		}
 	}
 
-	// Body (if Content-Length is set)
-	size += int(r.ContentLength)
+	// Body (if Content-Length is set and valid)
+	// Note: r.ContentLength is -1 when not set (e.g., GET requests)
+	if r.ContentLength > 0 {
+		size += int(r.ContentLength)
+	}
 
 	return size
 }
