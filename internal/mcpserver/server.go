@@ -8,6 +8,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/yourorg/timeservice/pkg/metrics"
 	"github.com/yourorg/timeservice/pkg/version"
 )
 
@@ -65,6 +66,88 @@ func NewServer(log *slog.Logger) *server.MCPServer {
 	)
 
 	return mcpServer
+}
+
+// NewServerWithMetrics creates and configures a new MCP server with metrics tracking
+func NewServerWithMetrics(log *slog.Logger, m *metrics.Metrics) *server.MCPServer {
+	// Create server with capabilities and options
+	mcpServer := server.NewMCPServer(
+		version.ServiceName,
+		version.Version,
+		server.WithToolCapabilities(true),
+		server.WithLogging(),
+		server.WithRecovery(),
+	)
+
+	// Register get_current_time tool with metrics
+	getCurrentTimeTool := mcp.NewTool("get_current_time",
+		mcp.WithDescription("Get the current server time in various formats and timezones"),
+		mcp.WithString("format",
+			mcp.Description("Time format: iso8601, unix, unixmilli, rfc3339, or custom Go format (e.g., '2006-01-02 15:04')"),
+		),
+		mcp.WithString("timezone",
+			mcp.Description("IANA timezone (e.g., America/New_York, UTC, Europe/London). Defaults to UTC"),
+		),
+	)
+
+	mcpServer.AddTool(getCurrentTimeTool, wrapWithMetrics("get_current_time", m, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleGetCurrentTime(ctx, request, log)
+	}))
+
+	// Register add_time_offset tool with metrics
+	addTimeOffsetTool := mcp.NewTool("add_time_offset",
+		mcp.WithDescription("Add a time offset (hours and/or minutes) to the current time"),
+		mcp.WithNumber("hours",
+			mcp.Description("Hours to add (can be negative for subtraction)"),
+		),
+		mcp.WithNumber("minutes",
+			mcp.Description("Minutes to add (can be negative for subtraction)"),
+		),
+		mcp.WithString("format",
+			mcp.Description("Output format: iso8601, unix, unixmilli, rfc3339, or custom Go format (e.g., '2006-01-02 15:04')"),
+		),
+		mcp.WithString("timezone",
+			mcp.Description("IANA timezone (e.g., America/New_York, UTC, Europe/London). Defaults to UTC"),
+		),
+	)
+
+	mcpServer.AddTool(addTimeOffsetTool, wrapWithMetrics("add_time_offset", m, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		return handleAddTimeOffset(ctx, request, log)
+	}))
+
+	log.Info("MCP server initialized",
+		"name", version.ServiceName,
+		"version", version.Version,
+		"tools", []string{"get_current_time", "add_time_offset"},
+	)
+
+	return mcpServer
+}
+
+// wrapWithMetrics wraps a tool handler with metrics tracking
+func wrapWithMetrics(toolName string, m *metrics.Metrics, handler func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error)) func(context.Context, mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		start := time.Now()
+
+		// Track in-flight tool calls
+		m.MCPToolCallsInFlight.Inc()
+		defer m.MCPToolCallsInFlight.Dec()
+
+		// Execute the tool handler
+		result, err := handler(ctx, request)
+
+		// Record metrics
+		duration := time.Since(start).Seconds()
+		status := "success"
+		if err != nil || (result != nil && result.IsError) {
+			status = "error"
+		}
+
+		m.MCPToolCallsTotal.WithLabelValues(toolName, status).Inc()
+		m.MCPToolCallDuration.WithLabelValues(toolName).Observe(duration)
+
+		return result, err
+	}
 }
 
 // handleGetCurrentTime handles the get_current_time tool

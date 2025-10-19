@@ -39,9 +39,10 @@ func NewServiceInfo() *ServiceInfo {
 		Service: version.ServiceName,
 		Version: version.Version,
 		Endpoints: map[string]string{
-			"time":   "GET /api/time",
-			"health": "GET /health",
-			"mcp":    "POST /mcp",
+			"time":    "GET /api/time",
+			"health":  "GET /health",
+			"mcp":     "POST /mcp",
+			"metrics": "GET /metrics",
 		},
 		MCPInfo: "Supports both stdio mode (--stdio flag) and HTTP transport (POST /mcp)",
 	}

@@ -64,3 +64,9 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+    # Labels for Prometheus service discovery
+    labels:
+      - "prometheus.scrape=true"
+      - "prometheus.port=8080"
+      - "prometheus.path=/metrics"

@@ -13,6 +13,11 @@ spec:
     metadata:
       labels:
         app: timeservice
+      annotations:
+        # Prometheus scraping configuration
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
     spec:
       # Security: Use dedicated service account
       serviceAccountName: timeservice
@@ -47,6 +52,9 @@ spec:
 
         ports:
         - name: http
+          containerPort: 8080
+          protocol: TCP
+        - name: metrics
           containerPort: 8080
           protocol: TCP
 
@@ -126,3 +134,22 @@ kind: ServiceAccount
 metadata:
   name: timeservice
 automountServiceAccountToken: false
+
+---
+# ServiceMonitor for Prometheus Operator
+# This enables automatic Prometheus scraping when using Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: timeservice
+  labels:
+    app: timeservice
+spec:
+  selector:
+    matchLabels:
+      app: timeservice
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s

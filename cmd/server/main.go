@@ -9,13 +9,17 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/yourorg/timeservice/internal/handler"
 	"github.com/yourorg/timeservice/internal/mcpserver"
 	"github.com/yourorg/timeservice/internal/middleware"
 	"github.com/yourorg/timeservice/pkg/config"
+	"github.com/yourorg/timeservice/pkg/metrics"
+	"github.com/yourorg/timeservice/pkg/version"
 )
 
 func main() {
@@ -57,8 +61,12 @@ func main() {
 		}
 	}
 
-	// Create MCP server
-	mcpServer := mcpserver.NewServer(logger)
+	// Initialize Prometheus metrics
+	metricsCollector := metrics.New("timeservice")
+	metricsCollector.SetBuildInfo(version.Version, runtime.Version())
+
+	// Create MCP server with metrics
+	mcpServer := mcpserver.NewServerWithMetrics(logger, metricsCollector)
 
 	// If stdio mode is requested, run MCP server via stdio and exit
 	if *stdio {
@@ -90,12 +98,17 @@ func main() {
 	// MCP endpoint (HTTP transport) - POST only for JSON-RPC
 	mux.HandleFunc("POST /mcp", h.MCP)
 
+	// Prometheus metrics endpoint
+	mux.Handle("GET /metrics", promhttp.Handler())
+
 	// Root endpoint with service info (handles all methods for backward compatibility)
 	mux.HandleFunc("/", h.ServiceInfo)
 
 	// Apply middleware with configured CORS origins
+	// Note: Prometheus middleware comes first to capture all request metrics
 	handler := middleware.Chain(
 		mux,
+		middleware.Prometheus(metricsCollector),
 		middleware.Logger(logger),
 		middleware.Recover(logger),
 		middleware.CORSWithOrigins(cfg.AllowedOrigins),
@@ -123,9 +136,10 @@ func main() {
 		logger.Info("server starting",
 			"addr", srv.Addr,
 			"endpoints", map[string]string{
-				"time":   "GET /api/time",
-				"health": "GET /health",
-				"mcp":    "POST /mcp",
+				"time":    "GET /api/time",
+				"health":  "GET /health",
+				"mcp":     "POST /mcp",
+				"metrics": "GET /metrics",
 			},
 		)
 

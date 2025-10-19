@@ -1,0 +1,69 @@
+# Sample Prometheus configuration for scraping timeservice
+# This file shows how to configure Prometheus to scrape metrics from timeservice
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape timeservice directly (for standalone deployments)
+  - job_name: 'timeservice'
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+
+  # Scrape timeservice in Docker (using Docker service discovery)
+  - job_name: 'timeservice-docker'
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+    relabel_configs:
+      # Only scrape containers with prometheus.scrape=true label
+      - source_labels: [__meta_docker_container_label_prometheus_scrape]
+        regex: 'true'
+        action: keep
+      # Use custom port if specified
+      - source_labels: [__meta_docker_container_label_prometheus_port]
+        regex: '(.+)'
+        target_label: __address__
+        replacement: '$1'
+      # Use custom path if specified
+      - source_labels: [__meta_docker_container_label_prometheus_path]
+        regex: '(.+)'
+        target_label: __metrics_path__
+        replacement: '$1'
+      # Add container name as label
+      - source_labels: [__meta_docker_container_name]
+        regex: '/(.*)'
+        target_label: container_name
+        replacement: '$1'
+
+  # Scrape timeservice in Kubernetes (using pod annotations)
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      # Only scrape pods with prometheus.io/scrape=true annotation
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      # Use custom path if specified
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      # Use custom port if specified
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      # Add pod labels
+      - action: labelmap
+        regex: __meta_kubernetes_pod_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name

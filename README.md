@@ -865,6 +865,225 @@ docker scout cves timeservice:latest
 trivy image timeservice:latest
 ```
 
+## Prometheus Observability
+
+This service exposes Prometheus metrics for comprehensive observability and monitoring.
+
+### Metrics Endpoint
+
+The `/metrics` endpoint exposes Prometheus-formatted metrics:
+
+```bash
+curl http://localhost:8080/metrics
+```
+
+### Available Metrics
+
+#### HTTP Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `timeservice_http_requests_total` | Counter | `method`, `path`, `status` | Total number of HTTP requests |
+| `timeservice_http_request_duration_seconds` | Histogram | `method`, `path` | HTTP request duration in seconds |
+| `timeservice_http_request_size_bytes` | Histogram | `method`, `path` | HTTP request size in bytes |
+| `timeservice_http_response_size_bytes` | Histogram | `method`, `path` | HTTP response size in bytes |
+| `timeservice_http_requests_in_flight` | Gauge | - | Number of HTTP requests currently being processed |
+
+#### MCP Tool Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `timeservice_mcp_tool_calls_total` | Counter | `tool`, `status` | Total number of MCP tool calls |
+| `timeservice_mcp_tool_call_duration_seconds` | Histogram | `tool` | MCP tool call duration in seconds |
+| `timeservice_mcp_tool_calls_in_flight` | Gauge | - | Number of MCP tool calls currently being processed |
+
+#### Application Metrics
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `timeservice_build_info` | Gauge | `version`, `go_version` | Build information (always 1) |
+
+#### Standard Go Metrics
+
+The service also exposes standard Go runtime metrics:
+- `go_goroutines` - Number of goroutines
+- `go_memstats_*` - Memory statistics
+- `go_gc_*` - Garbage collection statistics
+- `process_*` - Process statistics (CPU, memory, file descriptors)
+
+### Prometheus Configuration
+
+#### Docker Compose
+
+The `docker-compose.yml` includes labels for Prometheus service discovery:
+
+```yaml
+labels:
+  - "prometheus.scrape=true"
+  - "prometheus.port=8080"
+  - "prometheus.path=/metrics"
+```
+
+#### Kubernetes
+
+The Kubernetes deployment includes pod annotations for automatic Prometheus scraping:
+
+```yaml
+annotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8080"
+  prometheus.io/path: "/metrics"
+```
+
+A `ServiceMonitor` resource is also provided for Prometheus Operator:
+
+```bash
+kubectl apply -f k8s/deployment.yaml
+```
+
+#### Standalone Prometheus
+
+Example Prometheus configuration (`k8s/prometheus.yml`):
+
+```yaml
+scrape_configs:
+  - job_name: 'timeservice'
+    static_configs:
+      - targets: ['localhost:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+```
+
+### Grafana Dashboards
+
+#### Example Queries
+
+**Request Rate (requests/second):**
+```promql
+rate(timeservice_http_requests_total[5m])
+```
+
+**Request Duration (p95):**
+```promql
+histogram_quantile(0.95, rate(timeservice_http_request_duration_seconds_bucket[5m]))
+```
+
+**Error Rate:**
+```promql
+rate(timeservice_http_requests_total{status=~"5.."}[5m])
+/ rate(timeservice_http_requests_total[5m])
+```
+
+**MCP Tool Success Rate:**
+```promql
+rate(timeservice_mcp_tool_calls_total{status="success"}[5m])
+/ rate(timeservice_mcp_tool_calls_total[5m])
+```
+
+**In-Flight Requests:**
+```promql
+timeservice_http_requests_in_flight
+```
+
+#### Creating a Dashboard
+
+1. Import the metrics endpoint into Grafana datasource
+2. Create panels using the queries above
+3. Set up alerts for:
+   - High error rates (> 5%)
+   - High latency (p95 > 1s)
+   - Service down (no metrics scraped)
+
+### Monitoring Best Practices
+
+#### Alerts
+
+Recommended alerts:
+
+**High Error Rate:**
+```yaml
+- alert: HighErrorRate
+  expr: |
+    rate(timeservice_http_requests_total{status=~"5.."}[5m])
+    / rate(timeservice_http_requests_total[5m]) > 0.05
+  for: 5m
+  annotations:
+    summary: "High error rate detected"
+    description: "Error rate is {{ $value | humanizePercentage }}"
+```
+
+**High Latency:**
+```yaml
+- alert: HighLatency
+  expr: |
+    histogram_quantile(0.95,
+      rate(timeservice_http_request_duration_seconds_bucket[5m])
+    ) > 1.0
+  for: 5m
+  annotations:
+    summary: "High latency detected"
+    description: "P95 latency is {{ $value }}s"
+```
+
+**Service Down:**
+```yaml
+- alert: ServiceDown
+  expr: up{job="timeservice"} == 0
+  for: 1m
+  annotations:
+    summary: "Timeservice is down"
+    description: "Service has been down for more than 1 minute"
+```
+
+#### Recording Rules
+
+Pre-compute common queries:
+
+```yaml
+groups:
+  - name: timeservice
+    interval: 30s
+    rules:
+      - record: timeservice:http_requests:rate5m
+        expr: rate(timeservice_http_requests_total[5m])
+
+      - record: timeservice:http_request_duration:p95
+        expr: histogram_quantile(0.95, rate(timeservice_http_request_duration_seconds_bucket[5m]))
+
+      - record: timeservice:http_error_rate:rate5m
+        expr: |
+          rate(timeservice_http_requests_total{status=~"5.."}[5m])
+          / rate(timeservice_http_requests_total[5m])
+```
+
+### Testing Metrics
+
+Generate test traffic:
+
+```bash
+# Start server
+ALLOWED_ORIGINS="*" ./bin/server
+
+# Generate requests
+for i in {1..100}; do
+  curl -s http://localhost:8080/health > /dev/null
+  curl -s http://localhost:8080/api/time > /dev/null
+done
+
+# View metrics
+curl http://localhost:8080/metrics | grep timeservice
+```
+
+### Metrics Architecture
+
+The metrics implementation follows Prometheus best practices:
+
+1. **Automatic Instrumentation**: HTTP middleware automatically tracks all requests
+2. **Tool-Level Tracking**: MCP tool calls are wrapped with metrics collection
+3. **Cardinality Control**: Labels are carefully chosen to prevent metric explosion
+4. **Namespace**: All metrics use `timeservice` namespace to avoid conflicts
+5. **Standard Buckets**: Histograms use Prometheus default buckets for broad coverage
+
 ## License
 
 MIT License
