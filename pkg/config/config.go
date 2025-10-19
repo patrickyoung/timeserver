@@ -34,12 +34,25 @@ type Config struct {
 
 // Load loads configuration from environment variables with validation
 func Load() (*Config, error) {
+	// Get ALLOWED_ORIGINS - NO DEFAULT for security
+	// User must explicitly configure CORS policy
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+
+	// Dev-only escape hatch: allow wildcard ONLY if explicitly enabled
+	// This prevents accidental wildcard CORS in production
+	if allowedOrigins == "" {
+		if getEnv("ALLOW_CORS_WILDCARD_DEV", "") == "true" {
+			allowedOrigins = "*"
+		}
+		// Otherwise leave empty - validation will fail
+	}
+
 	cfg := &Config{
 		// Set defaults
 		Port:              getEnv("PORT", "8080"),
 		Host:              getEnv("HOST", ""),
 		LogLevel:          parseLogLevel(getEnv("LOG_LEVEL", "info")),
-		AllowedOrigins:    parseAllowedOrigins(getEnv("ALLOWED_ORIGINS", "*")),
+		AllowedOrigins:    parseAllowedOrigins(allowedOrigins),
 		ReadTimeout:       parseDuration(getEnv("READ_TIMEOUT", "10s"), 10*time.Second),
 		WriteTimeout:      parseDuration(getEnv("WRITE_TIMEOUT", "10s"), 10*time.Second),
 		IdleTimeout:       parseDuration(getEnv("IDLE_TIMEOUT", "60s"), 60*time.Second),
@@ -97,7 +110,15 @@ func (c *Config) Validate() error {
 
 	// Validate allowed origins
 	if len(c.AllowedOrigins) == 0 {
-		return fmt.Errorf("ALLOWED_ORIGINS cannot be empty")
+		return fmt.Errorf("ALLOWED_ORIGINS is required. Set explicit origins (e.g., ALLOWED_ORIGINS=\"https://example.com\") or use ALLOW_CORS_WILDCARD_DEV=true for development ONLY. Wildcard CORS (*) is a security vulnerability in production")
+	}
+
+	// Warn if using wildcard (but allow it since user explicitly configured it)
+	for _, origin := range c.AllowedOrigins {
+		if origin == "*" {
+			// This is logged as a warning by the caller - wildcard is dangerous
+			break
+		}
 	}
 
 	return nil

@@ -300,11 +300,35 @@ The service can be configured through environment variables. All configuration i
 
 ### CORS Configuration
 
+**SECURITY-CRITICAL**: CORS configuration is required for the server to start.
+
 | Variable | Default | Description | Valid Values |
 |----------|---------|-------------|--------------|
-| `ALLOWED_ORIGINS` | `*` | Allowed CORS origins (comma-separated) | `*` for all, or specific origins like `https://example.com,https://app.example.com` |
+| `ALLOWED_ORIGINS` | **REQUIRED** | Allowed CORS origins (comma-separated) | Explicit origins like `https://example.com,https://app.example.com` |
+| `ALLOW_CORS_WILDCARD_DEV` | (none) | Dev-only escape hatch to allow wildcard CORS | `true` to enable `*` origin (DEVELOPMENT ONLY) |
 
-**Security Note**: The wildcard (`*`) origin is insecure for production. Always specify explicit origins for production deployments.
+**Security Notes**:
+- **ALLOWED_ORIGINS is REQUIRED**: The server will fail to start if ALLOWED_ORIGINS is not set, preventing accidental wildcard CORS in production.
+- **No wildcard default**: There is no default value. You must explicitly configure allowed origins.
+- **Production**: Always use explicit origins (e.g., `ALLOWED_ORIGINS="https://example.com,https://app.example.com"`).
+- **Development only**: Use `ALLOW_CORS_WILDCARD_DEV=true` to enable wildcard CORS (`*`) for local development. This is a conscious opt-in that prevents accidental production exposure.
+- **Why this matters**: Wildcard CORS (`*`) allows any website to make authenticated requests to your API, potentially stealing cookies, session tokens, and user data. This is a critical security vulnerability.
+
+**Example - Production (CORRECT):**
+```bash
+ALLOWED_ORIGINS="https://example.com,https://app.example.com" ./bin/server
+```
+
+**Example - Development (USE WITH CAUTION):**
+```bash
+ALLOW_CORS_WILDCARD_DEV=true ./bin/server
+```
+
+**What happens without configuration:**
+```bash
+$ ./bin/server
+Configuration error: invalid configuration: ALLOWED_ORIGINS is required. Set explicit origins (e.g., ALLOWED_ORIGINS="https://example.com") or use ALLOW_CORS_WILDCARD_DEV=true for development ONLY. Wildcard CORS (*) is a security vulnerability in production
+```
 
 ### Timeout Configuration
 
@@ -340,13 +364,14 @@ make run
 ```bash
 PORT=3000 \
 LOG_LEVEL=debug \
-ALLOWED_ORIGINS="*" \
+ALLOW_CORS_WILDCARD_DEV=true \
 make run
 ```
 
 **High-Performance Configuration:**
 ```bash
 PORT=8080 \
+ALLOWED_ORIGINS="https://api.example.com,https://app.example.com" \
 READ_TIMEOUT=5s \
 WRITE_TIMEOUT=5s \
 IDLE_TIMEOUT=30s \
@@ -359,7 +384,7 @@ make run
 environment:
   - PORT=8080
   - LOG_LEVEL=info
-  - ALLOWED_ORIGINS=https://example.com
+  - ALLOWED_ORIGINS=https://example.com,https://app.example.com
   - READ_TIMEOUT=15s
   - WRITE_TIMEOUT=15s
 ```
@@ -369,12 +394,16 @@ environment:
 The server validates all configuration on startup and will exit with an error message if any values are invalid:
 
 ```bash
+# Missing ALLOWED_ORIGINS example
+$ ./bin/server
+Configuration error: invalid configuration: ALLOWED_ORIGINS is required. Set explicit origins (e.g., ALLOWED_ORIGINS="https://example.com") or use ALLOW_CORS_WILDCARD_DEV=true for development ONLY. Wildcard CORS (*) is a security vulnerability in production
+
 # Invalid port example
-$ PORT=999999 ./bin/server
+$ PORT=999999 ALLOWED_ORIGINS="https://example.com" ./bin/server
 Configuration error: invalid configuration: invalid PORT 999999: must be between 1 and 65535
 
 # Invalid timeout example
-$ READ_TIMEOUT=-5s ./bin/server
+$ READ_TIMEOUT=-5s ALLOWED_ORIGINS="https://example.com" ./bin/server
 Configuration error: invalid configuration: READ_TIMEOUT must be positive, got -5s
 ```
 
@@ -387,10 +416,22 @@ Configuration values are logged at startup (at INFO level) for debugging deploym
   "msg": "configuration loaded",
   "port": "8080",
   "log_level": "INFO",
-  "allowed_origins": ["*"],
+  "allowed_origins": ["https://example.com","https://app.example.com"],
   "read_timeout": 10000000000,
   "write_timeout": 10000000000,
   "idle_timeout": 60000000000
+}
+```
+
+If wildcard CORS is detected (via `ALLOW_CORS_WILDCARD_DEV=true`), a warning will be logged:
+
+```json
+{
+  "time": "2025-10-18T09:22:14Z",
+  "level": "WARN",
+  "msg": "wildcard CORS (*) is enabled - this is INSECURE for production",
+  "recommendation": "set explicit origins in ALLOWED_ORIGINS",
+  "dev_only": "use ALLOW_CORS_WILDCARD_DEV=true only in development"
 }
 ```
 

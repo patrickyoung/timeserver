@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -44,6 +45,17 @@ func main() {
 		"write_timeout", cfg.WriteTimeout,
 		"idle_timeout", cfg.IdleTimeout,
 	)
+
+	// Warn if wildcard CORS is configured (security risk)
+	for _, origin := range cfg.AllowedOrigins {
+		if origin == "*" {
+			logger.Warn("wildcard CORS (*) is enabled - this is INSECURE for production",
+				"recommendation", "set explicit origins in ALLOWED_ORIGINS",
+				"dev_only", "use ALLOW_CORS_WILDCARD_DEV=true only in development",
+			)
+			break
+		}
+	}
 
 	// Create MCP server
 	mcpServer := mcpserver.NewServer(logger)
@@ -90,7 +102,8 @@ func main() {
 	)
 
 	// Configure server with timeouts from config
-	addr := cfg.Host + ":" + cfg.Port
+	// Use net.JoinHostPort to properly handle IPv6 addresses (e.g., [::1]:8080)
+	addr := net.JoinHostPort(cfg.Host, cfg.Port)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           handler,

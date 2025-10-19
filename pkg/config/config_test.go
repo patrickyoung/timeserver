@@ -9,21 +9,31 @@ import (
 
 func TestLoad(t *testing.T) {
 	// Save current environment
-	oldPort := os.Getenv("PORT")
-	oldLogLevel := os.Getenv("LOG_LEVEL")
+	oldEnv := map[string]string{
+		"PORT":                        os.Getenv("PORT"),
+		"LOG_LEVEL":                   os.Getenv("LOG_LEVEL"),
+		"ALLOWED_ORIGINS":             os.Getenv("ALLOWED_ORIGINS"),
+		"ALLOW_CORS_WILDCARD_DEV":     os.Getenv("ALLOW_CORS_WILDCARD_DEV"),
+	}
 	defer func() {
-		os.Setenv("PORT", oldPort)
-		os.Setenv("LOG_LEVEL", oldLogLevel)
+		for k, v := range oldEnv {
+			if v == "" {
+				os.Unsetenv(k)
+			} else {
+				os.Setenv(k, v)
+			}
+		}
 	}()
 
-	// Test with defaults
+	// Test with defaults and dev escape hatch
 	os.Unsetenv("PORT")
 	os.Unsetenv("LOG_LEVEL")
 	os.Unsetenv("ALLOWED_ORIGINS")
+	os.Setenv("ALLOW_CORS_WILDCARD_DEV", "true")
 
 	cfg, err := Load()
 	if err != nil {
-		t.Fatalf("Load() with defaults failed: %v", err)
+		t.Fatalf("Load() with defaults and dev escape hatch failed: %v", err)
 	}
 
 	if cfg.Port != "8080" {
@@ -35,7 +45,7 @@ func TestLoad(t *testing.T) {
 	}
 
 	if len(cfg.AllowedOrigins) != 1 || cfg.AllowedOrigins[0] != "*" {
-		t.Errorf("expected default allowed origins [*], got %v", cfg.AllowedOrigins)
+		t.Errorf("expected wildcard allowed origins [*] with dev escape hatch, got %v", cfg.AllowedOrigins)
 	}
 
 	if cfg.ReadTimeout != 10*time.Second {
@@ -284,6 +294,61 @@ func TestValidate_InvalidMaxHeaderBytes(t *testing.T) {
 				t.Errorf("expected error containing %q, got %q", tt.want, err.Error())
 			}
 		})
+	}
+}
+
+func TestLoad_MissingAllowedOrigins(t *testing.T) {
+	// Save current environment
+	oldEnv := map[string]string{
+		"ALLOWED_ORIGINS":         os.Getenv("ALLOWED_ORIGINS"),
+		"ALLOW_CORS_WILDCARD_DEV": os.Getenv("ALLOW_CORS_WILDCARD_DEV"),
+	}
+	defer func() {
+		for k, v := range oldEnv {
+			if v == "" {
+				os.Unsetenv(k)
+			} else {
+				os.Setenv(k, v)
+			}
+		}
+	}()
+
+	// Unset both ALLOWED_ORIGINS and the dev escape hatch
+	os.Unsetenv("ALLOWED_ORIGINS")
+	os.Unsetenv("ALLOW_CORS_WILDCARD_DEV")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() should fail when ALLOWED_ORIGINS is not set and dev escape hatch is disabled")
+	}
+
+	expectedMsg := "ALLOWED_ORIGINS is required"
+	if !contains(err.Error(), expectedMsg) {
+		t.Errorf("expected error containing %q, got %q", expectedMsg, err.Error())
+	}
+}
+
+func TestValidate_MissingAllowedOrigins(t *testing.T) {
+	cfg := &Config{
+		Port:              "8080",
+		LogLevel:          slog.LevelInfo,
+		AllowedOrigins:    []string{}, // Empty - should fail validation
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 5 * time.Second,
+		ShutdownTimeout:   10 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail when AllowedOrigins is empty")
+	}
+
+	expectedMsg := "ALLOWED_ORIGINS is required"
+	if !contains(err.Error(), expectedMsg) {
+		t.Errorf("expected error containing %q, got %q", expectedMsg, err.Error())
 	}
 }
 

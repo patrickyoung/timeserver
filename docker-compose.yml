@@ -33,6 +33,9 @@ services:
     # Environment variables
     environment:
       - PORT=8080
+      # SECURITY: Set explicit CORS origins for production
+      # For dev: use ALLOW_CORS_WILDCARD_DEV=true
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
 
     # Restart policy
     restart: unless-stopped
