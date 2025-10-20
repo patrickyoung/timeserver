@@ -1,4 +1,4 @@
-.PHONY: help deps fmt vet lint test test-verbose test-race test-coverage test-coverage-html build run docker clean ci-local
+.PHONY: help deps fmt vet lint test test-verbose test-race test-coverage test-coverage-html build run docker clean ci-local security-audit vuln-check
 
 # Default target
 help:
@@ -16,6 +16,8 @@ help:
 	@echo "  make run                 - Run the server"
 	@echo "  make docker              - Build Docker image"
 	@echo "  make clean               - Clean build artifacts and coverage files"
+	@echo "  make security-audit      - Run security audits (gosec + vuln check)"
+	@echo "  make vuln-check          - Check for dependency vulnerabilities"
 	@echo "  make ci-local            - Run all CI checks locally"
 
 # Download dependencies
@@ -105,8 +107,36 @@ docker:
 	@echo "  - timeservice:v1.0.0 (use for production deployments)"
 	@echo "  - timeservice:latest (for local development only)"
 
+# Run security audits
+security-audit:
+	@echo "Running security audit..."
+	@echo ""
+	@echo "1. Running gosec security scanner..."
+	@if command -v gosec >/dev/null 2>&1; then \
+		gosec -fmt=text ./...; \
+	else \
+		echo "gosec not found. Install with: go install github.com/securego/gosec/v2/cmd/gosec@latest"; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "2. Checking for dependency vulnerabilities..."
+	@$(MAKE) vuln-check
+	@echo ""
+	@echo "Security audit complete!"
+
+# Check for dependency vulnerabilities
+vuln-check:
+	@echo "Checking for known vulnerabilities in dependencies..."
+	@if command -v govulncheck >/dev/null 2>&1; then \
+		govulncheck ./...; \
+	else \
+		echo "govulncheck not found. Install with: go install golang.org/x/vuln/cmd/govulncheck@latest"; \
+		echo "Falling back to go list -m all for dependency check..."; \
+		go list -m all; \
+	fi
+
 # Run all CI checks locally
-ci-local: deps fmt vet lint test-race test-coverage
+ci-local: deps fmt vet lint test-race test-coverage security-audit
 	@echo ""
 	@echo "========================================"
 	@echo "All CI checks passed! ✓"

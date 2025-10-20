@@ -25,17 +25,18 @@ This document captures the technical design patterns, conventions, and operation
 │   └── healthcheck/     # Tiny probe binary for container health checks
 ├── internal/
 │   ├── handler/         # HTTP handlers (time, health, service info, MCP proxy)
-│   ├── middleware/      # Logging, recovery, CORS enforcement, Prometheus instrumentation
+│   ├── middleware/      # Logging, recovery, auth, CORS enforcement, Prometheus instrumentation
 │   ├── mcpserver/       # MCP tool definitions, execution, metrics hooks
 │   └── testutil/        # Shared testing helpers and mocks
 └── pkg/
+    ├── auth/            # OIDC authentication, JWT verification, claims authorization
     ├── config/          # Environment-driven configuration and validation
     ├── metrics/         # Prometheus collectors, build info instrumentation
     ├── model/           # Response models shared by HTTP and MCP paths
     └── version/         # Canonical service name and version constants
 ```
 
-- **ADRs** in `docs/adr/` document major architectural decisions (dual interface, configuration guardrails, observability, container hardening).
+- **ADRs** in `docs/adr/` document major architectural decisions (dual interface, configuration guardrails, observability, container hardening, authentication).
 - **Supporting manifests** (`Dockerfile`, `docker-compose.yml`, `k8s/`) reflect deployment patterns aligned with the Go code.
 
 ---
@@ -47,6 +48,7 @@ This document captures the technical design patterns, conventions, and operation
   - Prometheus instrumentation (first in chain to capture all requests).
   - Structured logging (`slog`) with duration and status code.
   - Panic recovery producing 500 responses instead of crashes.
+  - **Authentication and Authorization** (ADR 0005): JWT validation, claims extraction, and role/permission enforcement.
   - Configurable CORS with explicit allow-list enforcement.
 - MCP over HTTP routes requests to `github.com/mark3labs/mcp-go/server.NewStreamableHTTPServer`, sharing tool implementations with stdio mode.
 
@@ -65,6 +67,7 @@ This document captures the technical design patterns, conventions, and operation
 - `pkg/config.Load` reads environment variables, applies defaults, and validates invariants before the server starts.
 - Critical safeguards:
   - `ALLOWED_ORIGINS` is mandatory; wildcard CORS requires `ALLOW_CORS_WILDCARD_DEV=true`.
+  - **Authentication configuration** (ADR 0005): `OIDC_ISSUER_URL` and `OIDC_AUDIENCE` required when `AUTH_ENABLED=true`.
   - Timeouts, header limits, and port ranges are validated with descriptive error messages.
 - `cmd/server/main.go` logs effective configuration at startup to assist operators.
 - Logging level defaults to `info` but can be set via `LOG_LEVEL`; stdio mode uses a lightweight configuration path.
@@ -78,7 +81,8 @@ This document captures the technical design patterns, conventions, and operation
 - MCP tool handlers emit structured events for successful and error cases.
 
 ### 6.2 Metrics (Prometheus)
-- `pkg/metrics` defines all collectors: HTTP counters/histograms/gauges, MCP tool metrics, and a build info gauge.
+- `pkg/metrics` defines all collectors: HTTP counters/histograms/gauges, MCP tool metrics, auth metrics, and a build info gauge.
+- **Auth metrics** (ADR 0005): Track authentication attempts (by path and status), auth duration, and token verification results.
 - Middleware and tool wrappers ensure instrumentation is automatic for every handler.
 - `/metrics` endpoint is exposed by default and integrated with container/Kubernetes manifests.
 
@@ -90,6 +94,12 @@ This document captures the technical design patterns, conventions, and operation
 
 ## 7. Security and DevSecOps Posture
 - **Configuration Guardrails**: Fail-fast on missing CORS configuration (ADR 0002).
+- **Authentication & Authorization** (ADR 0005):
+  - OAuth2/OIDC with JWT-based claims authorization.
+  - Provider-agnostic design (Auth0, Okta, Azure Entra ID, Keycloak, etc.).
+  - Stateless token verification using public keys from JWKS endpoint.
+  - Claims-based access control (roles, permissions, scopes).
+  - Configurable public/protected paths with secure-by-default posture.
 - **CORS Enforcement**: Middleware checks origins per request and handles preflight (`OPTIONS`) requests securely.
 - **Graceful Shutdown**: Signal handling ensures in-flight requests complete within configured timeouts.
 - **Container Hardening** (ADR 0004):
@@ -152,10 +162,13 @@ This document captures the technical design patterns, conventions, and operation
 ---
 
 ## 12. Operational Playbook
-- **Startup**: Confirm logs show configuration values and CORS warnings when wildcard origins are used.
-- **Monitoring**: Use Prometheus metrics (e.g., `timeservice_http_requests_total`, `timeservice_mcp_tool_calls_total`, `timeservice_http_request_duration_seconds`) for dashboards and alerts.
+- **Startup**: Confirm logs show configuration values, auth status, and CORS warnings when wildcard origins are used.
+- **Monitoring**: Use Prometheus metrics for dashboards and alerts:
+  - HTTP: `timeservice_http_requests_total`, `timeservice_http_request_duration_seconds`
+  - MCP: `timeservice_mcp_tool_calls_total`, `timeservice_mcp_tool_call_duration_seconds`
+  - Auth: `timeservice_auth_attempts_total`, `timeservice_auth_duration_seconds`, `timeservice_auth_tokens_verified_total`
 - **Graceful Shutdown**: On SIGTERM/SIGINT, the server honors `ShutdownTimeout` and drains listeners gracefully.
-- **Incident Response**: Structured logs simplify correlation; metrics highlight error rates and latency spikes, especially across MCP tools.
+- **Incident Response**: Structured logs simplify correlation; metrics highlight error rates and latency spikes, especially across MCP tools and authentication failures.
 
 ---
 
@@ -172,4 +185,6 @@ This document captures the technical design patterns, conventions, and operation
 - ADR 0002 – Configuration Guardrails for CORS and Startup Safety (`docs/adr/0002-configuration-guardrails.md`)
 - ADR 0003 – Prometheus Instrumentation for HTTP and MCP Paths (`docs/adr/0003-prometheus-instrumentation.md`)
 - ADR 0004 – Hardened Container Packaging for Deployments (`docs/adr/0004-hardened-container-packaging.md`)
+- ADR 0005 – OAuth2/OIDC JWT-Based Authentication and Authorization (`docs/adr/0005-oauth2-oidc-jwt-authorization.md`)
+- Security design (`docs/SECURITY.md`)
 - Testing strategy (`docs/TESTING.md`)

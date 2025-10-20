@@ -4,13 +4,16 @@ This document describes the testing approach for the timeservice project.
 
 ## Test Coverage Summary
 
-Overall test coverage: **60.8%** (excluding main.go and test utilities)
+Overall test coverage: **60%+** (excluding main.go and test utilities)
 
 ### Component Coverage
-- **Handler**: 91.7% coverage
-- **MCP Server**: 91.9% coverage
-- **Middleware**: 100% coverage
-- **Model**: 100% coverage
+- **Handler**: 96.6% coverage
+- **MCP Server**: 63.5% coverage
+- **Middleware**: 41.5% coverage (includes new auth middleware)
+- **Auth**: 59.6% coverage
+- **Config**: 81.6% coverage
+- **Metrics**: 66.7% coverage
+- **Model**: 100.0% coverage
 
 ## Testing Philosophy
 
@@ -36,6 +39,12 @@ This project follows modern Go testing practices:
 │   └── testutil/
 │       └── testutil.go              # Mock implementations
 └── pkg/
+    ├── auth/
+    │   └── auth_test.go             # Auth package tests
+    ├── config/
+    │   └── config_test.go           # Configuration tests
+    ├── metrics/
+    │   └── metrics_test.go          # Metrics tests
     └── model/
         └── model_test.go            # Model constructor tests
 ```
@@ -142,6 +151,32 @@ go tool cover -html=coverage.out
   - Fractional hours
 - `TestHandleAddTimeOffsetDefaults` - Default parameters
 - `TestHandleAddTimeOffsetFormats` - Different output formats
+
+#### Auth Tests (`pkg/auth/auth_test.go`)
+- `TestExtractBearerToken` - Bearer token extraction (table-driven)
+  - Valid tokens with various formats
+  - Invalid tokens and error cases
+- `TestHasAnyRole` - Role validation logic
+- `TestHasAllPermissions` - Permission validation logic
+- `TestHasAnyScope` - Scope validation logic
+- `TestAuthorize` - Complete authorization flow (table-driven)
+  - Valid cases with roles, permissions, scopes
+  - Invalid cases with missing claims
+
+#### Config Tests (`pkg/config/config_test.go`)
+- `TestLoad` - Configuration loading from environment
+- `TestValidate*` - Configuration validation (table-driven)
+  - Port validation
+  - Timeout validation
+  - CORS validation
+  - Auth configuration validation
+
+#### Metrics Tests (`pkg/metrics/metrics_test.go`)
+- `TestNew` - Metrics initialization
+- `TestSetBuildInfo` - Build info metric
+- `TestHTTPMetrics` - HTTP metric collectors
+- `TestMCPToolMetrics` - MCP tool metric collectors
+- `TestInFlightGauges` - In-flight request gauges
 
 #### Model Tests (`pkg/model/model_test.go`)
 - `TestNewTimeResponse` - Time response construction

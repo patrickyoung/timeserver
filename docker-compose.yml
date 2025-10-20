@@ -39,6 +39,15 @@ services:
       # For dev: use ALLOW_CORS_WILDCARD_DEV=true
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
 
+      # SECURITY: Authentication (disabled by default for backward compatibility)
+      # To enable auth, uncomment the lines below and configure your OIDC provider:
+      # - AUTH_ENABLED=true
+      # - OIDC_ISSUER_URL=https://your-auth-provider.example.com
+      # - OIDC_AUDIENCE=timeservice
+      # - AUTH_PUBLIC_PATHS=/health,/,/metrics
+      # - AUTH_REQUIRED_ROLE=time-reader
+      # See docs/SECURITY.md for detailed setup instructions
+
     # Restart policy
     restart: unless-stopped
 
