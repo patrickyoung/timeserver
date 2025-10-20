@@ -1238,7 +1238,7 @@ The Docker image has been hardened following security best practices:
 ### Dockerfile Security Features
 
 1. **Pinned Base Images**
-   - Uses specific patch versions: `golang:1.24.8-alpine3.21` and `alpine:3.21.0`
+   - Uses specific versions: `golang:1.24-alpine` and `alpine:3.20`
    - Ensures reproducible builds and prevents supply chain attacks
 
 2. **Minimal Attack Surface**
@@ -1601,6 +1601,7 @@ The metrics implementation follows Prometheus best practices:
 Comprehensive documentation is available in the `docs/` directory:
 
 ### Core Documentation
+- **[VERSION_MANAGEMENT.md](docs/VERSION_MANAGEMENT.md)** - Version management practices and validation
 - **[TESTING.md](docs/TESTING.md)** - Testing strategy, coverage summary, and test organization
 - **[TESTING_ANALYSIS.md](docs/TESTING_ANALYSIS.md)** - Detailed coverage analysis and testing metrics
 - **[SECURITY.md](docs/SECURITY.md)** - Security practices, authentication, and threat model

@@ -7,9 +7,22 @@ on:
     branches: [ main, develop ]
 
 jobs:
+  validate-versions:
+    name: Validate Version Consistency
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Validate versions
+      run: |
+        chmod +x scripts/validate-versions.sh
+        ./scripts/validate-versions.sh
+
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: [validate-versions]
     strategy:
       matrix:
         go-version: ['1.22', '1.23', '1.24']
@@ -70,6 +83,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    needs: [validate-versions]
 
     steps:
     - name: Checkout code
@@ -214,6 +228,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    needs: [validate-versions]
 
     steps:
     - name: Checkout code

@@ -1,4 +1,4 @@
-.PHONY: help deps fmt vet lint test test-verbose test-race test-coverage test-coverage-html build run docker clean ci-local security-audit vuln-check
+.PHONY: help deps fmt vet lint test test-verbose test-race test-coverage test-coverage-html build run docker clean ci-local security-audit vuln-check validate-versions
 
 # Default target
 help:
@@ -16,6 +16,7 @@ help:
 	@echo "  make run                 - Run the server"
 	@echo "  make docker              - Build Docker image"
 	@echo "  make clean               - Clean build artifacts and coverage files"
+	@echo "  make validate-versions   - Validate version consistency across project"
 	@echo "  make security-audit      - Run security audits (gosec + vuln check)"
 	@echo "  make vuln-check          - Check for dependency vulnerabilities"
 	@echo "  make ci-local            - Run all CI checks locally"
@@ -70,8 +71,13 @@ test-coverage-html: test-coverage
 	@go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
+# Validate version consistency
+validate-versions:
+	@echo "Validating version consistency..."
+	@./scripts/validate-versions.sh
+
 # Build the server
-build:
+build: validate-versions
 	@echo "Building server..."
 	@mkdir -p bin
 	@go build -o bin/server ./cmd/server
@@ -100,7 +106,7 @@ lint:
 
 # Build Docker image
 # Builds with both version tag (for production) and latest tag (for convenience)
-docker:
+docker: validate-versions
 	@echo "Building Docker image..."
 	@docker build -t timeservice:v1.0.0 -t timeservice:latest .
 	@echo "Docker images built:"
@@ -136,7 +142,7 @@ vuln-check:
 	fi
 
 # Run all CI checks locally
-ci-local: deps fmt vet lint test-race test-coverage security-audit
+ci-local: validate-versions deps fmt vet lint test-race test-coverage security-audit
 	@echo ""
 	@echo "========================================"
 	@echo "All CI checks passed! ✓"

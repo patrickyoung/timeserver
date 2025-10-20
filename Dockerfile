@@ -1,5 +1,5 @@
 # Build stage - Pin patch version for reproducibility
-FROM golang:1.24.8-alpine3.21 AS builder
+FROM golang:1.24-alpine AS builder
 
 # Install ca-certificates and tzdata in builder
 RUN apk add --no-cache \
@@ -34,7 +34,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     cmd/healthcheck/main.go
 
 # Final stage - Use distroless or minimal alpine for non-root user
-FROM alpine:3.21.0
+FROM alpine:3.20
 
 # Install ca-certificates and tzdata
 RUN apk add --no-cache \
