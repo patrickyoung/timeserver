@@ -739,7 +739,7 @@ All timeout values use Go duration format (e.g., `10s`, `1m`, `500ms`).
 | `AUTH_ENABLED` | `false` | Enable authentication (opt-in) | `true` or `false` |
 | `OIDC_ISSUER_URL` | **REQUIRED if auth enabled** | OIDC provider URL | Valid HTTPS URL (e.g., `https://auth.example.com` or `https://login.microsoftonline.com/{tenant-id}/v2.0`) |
 | `OIDC_AUDIENCE` | **REQUIRED if auth enabled** | Expected audience claim in JWT | Your service identifier (e.g., `timeservice` or `api://timeservice`) |
-| `AUTH_PUBLIC_PATHS` | `/health,/` | Comma-separated list of public paths (no auth) | Path patterns (e.g., `/health,/,/metrics`) |
+| `AUTH_PUBLIC_PATHS` | `/health,/,/metrics` | Comma-separated list of public paths (no auth) | Path patterns (e.g., `/health,/,/metrics`) |
 | `AUTH_REQUIRED_ROLE` | (none) | Required role for all protected endpoints | Role name (e.g., `time-reader`) |
 | `AUTH_REQUIRED_PERMISSION` | (none) | Required permission for all protected endpoints | Permission string (e.g., `time:read`) |
 | `AUTH_REQUIRED_SCOPE` | (none) | Required OAuth2 scope for all protected endpoints | Scope string (e.g., `time:read`) |
@@ -754,6 +754,24 @@ All timeout values use Go duration format (e.g., `10s`, `1m`, `500ms`).
 - **Claims-based authorization**: Fine-grained access control using JWT claims (roles, permissions, scopes)
 - **Stateless**: No database lookups needed; all authorization data is in the JWT
 - **HTTPS required**: OIDC issuer must use HTTPS in production (set `ALLOW_HTTP_OIDC_DEV=true` only for local testing)
+
+**Public Paths Explained**:
+- `/health` - Required for container health checks and load balancer probes
+- `/` - Provides service discovery information (which endpoints exist)
+- `/metrics` - Required for Prometheus scraping (monitoring tools don't typically use auth tokens)
+
+**CRITICAL: CORS and Auth Middleware Ordering**
+
+When authentication is enabled, the server **requires proper middleware ordering** to function correctly with browser clients:
+
+- **CORS middleware MUST come before Auth middleware** in the chain
+- Browser CORS preflight requests (OPTIONS) do not include the `Authorization` header
+- If Auth runs before CORS, preflight requests receive 401 errors without CORS headers
+- This causes browsers to block all requests to the API, making it unusable
+
+The server is correctly configured with CORS → Auth ordering. If you modify the middleware chain in `cmd/server/main.go`, **preserve this order** or browser clients will break.
+
+For detailed explanation, see [Middleware Ordering Requirements in DESIGN.md](docs/DESIGN.md#31-middleware-ordering-requirements)
 
 **Example - Production with Keycloak:**
 ```bash
@@ -1607,6 +1625,7 @@ Comprehensive documentation is available in the `docs/` directory:
 - **[SECURITY.md](docs/SECURITY.md)** - Security practices, authentication, and threat model
 - **[DEVSECOPS.md](docs/DEVSECOPS.md)** - DevSecOps practices, security controls, and compliance
 - **[DESIGN.md](docs/DESIGN.md)** - System architecture and design decisions
+  - **[Middleware Ordering Requirements](docs/DESIGN.md#31-middleware-ordering-requirements)** - Critical CORS/Auth ordering explained
 
 ### Architecture Decision Records (ADRs)
 The `docs/adr/` directory contains detailed architecture decisions:

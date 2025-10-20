@@ -52,9 +52,136 @@ This document captures the technical design patterns, conventions, and operation
   - Prometheus instrumentation (first in chain to capture all requests).
   - Structured logging (`slog`) with duration and status code.
   - Panic recovery producing 500 responses instead of crashes.
+  - **CORS** with explicit allow-list enforcement (must come before Auth - see section 3.1).
   - **Authentication and Authorization** (ADR 0005): JWT validation, claims extraction, and role/permission enforcement.
-  - Configurable CORS with explicit allow-list enforcement.
 - MCP over HTTP routes requests to `github.com/mark3labs/mcp-go/server.NewStreamableHTTPServer`, sharing tool implementations with stdio mode.
+
+### 3.1 Middleware Ordering Requirements
+
+**CRITICAL: Middleware order is not arbitrary.** The chain execution order directly affects security, functionality, and browser compatibility.
+
+#### Current Middleware Chain (cmd/server/main.go)
+
+```go
+handler := middleware.Chain(
+    mux,
+    middleware.Prometheus(metricsCollector),  // 1. Metrics (captures all requests)
+    middleware.Logger(logger),                 // 2. Logging
+    middleware.Recover(logger),                // 3. Panic recovery
+    middleware.CORSWithOrigins(cfg.AllowedOrigins),  // 4. CORS ⚠️ MUST be before Auth
+    middleware.Auth(&middleware.AuthConfig{...}),     // 5. Authentication
+)
+```
+
+**Note**: `middleware.Chain` applies middleware in **reverse order** (last wraps first). The execution order is the sequence shown above.
+
+#### Why CORS Must Come Before Auth
+
+**The Problem**: Browser CORS preflight requests (HTTP OPTIONS) do not include authentication headers.
+
+**What happens if Auth comes before CORS**:
+1. Browser sends OPTIONS request (no `Authorization` header - this is by design)
+2. Auth middleware executes first → sees no token → returns 401 Unauthorized
+3. CORS middleware never runs → no CORS headers added to 401 response
+4. Browser sees 401 without CORS headers → **blocks the actual request**
+5. API becomes unusable from browser clients
+
+**What happens with correct ordering (CORS before Auth)**:
+1. Browser sends OPTIONS request (no `Authorization` header)
+2. CORS middleware executes first → handles OPTIONS → returns 204 with CORS headers
+3. Auth middleware never executes (OPTIONS returns early)
+4. Browser receives 204 with CORS headers → **allows the actual request**
+5. Actual request includes `Authorization` header → Auth middleware validates it
+
+#### Middleware Ordering Rules
+
+| Middleware | Position | Reason |
+|------------|----------|--------|
+| **Prometheus** | First | Must capture all requests including failures |
+| **Logger** | Early | Log all requests with accurate timing |
+| **Recover** | Early | Catch panics before they crash the server |
+| **CORS** | Before Auth | Handle OPTIONS preflight without requiring auth |
+| **Auth** | After CORS | Validate tokens after CORS preflight is handled |
+
+#### Public Paths Configuration
+
+Certain endpoints must be accessible without authentication:
+
+```go
+// Default public paths (pkg/config/config.go)
+AuthPublicPaths: "/health,/,/metrics"
+```
+
+- `/health` - Container health checks and load balancers
+- `/` - Service info endpoint
+- `/metrics` - Prometheus scraping (monitoring tools don't use auth tokens)
+
+**Important**: Even with public paths, CORS must still come before Auth. Public path checking happens inside the Auth middleware, but OPTIONS requests never reach that logic if Auth returns 401 first.
+
+#### Testing Middleware Order
+
+Verify CORS preflight works correctly:
+
+```bash
+# Should return 204 with CORS headers (no auth required)
+curl -i -X OPTIONS http://localhost:8080/api/time \
+  -H "Origin: http://example.com" \
+  -H "Access-Control-Request-Method: GET"
+
+# Should return 200 (public path, no auth required)
+curl -i http://localhost:8080/metrics
+
+# Should return 401 without valid token (protected path)
+curl -i http://localhost:8080/api/locations
+```
+
+#### Common Mistakes
+
+❌ **Wrong: Auth before CORS**
+```go
+middleware.Chain(
+    mux,
+    middleware.Auth(...),          // Auth first - BREAKS browser clients!
+    middleware.CORSWithOrigins(...),
+)
+```
+
+❌ **Wrong: Forgetting /metrics in public paths**
+```go
+AuthPublicPaths: "/health,/"  // Missing /metrics - Prometheus can't scrape!
+```
+
+❌ **Wrong: Trying to fix with OPTIONS in public paths**
+```go
+// This doesn't work - OPTIONS never reaches Auth middleware
+// because 401 is returned before public path check
+AuthPublicPaths: "/health,/,OPTIONS"  // ⚠️ Incorrect approach
+```
+
+✅ **Correct: CORS before Auth, /metrics in public paths**
+```go
+handler := middleware.Chain(
+    mux,
+    middleware.Prometheus(metricsCollector),
+    middleware.Logger(logger),
+    middleware.Recover(logger),
+    middleware.CORSWithOrigins(cfg.AllowedOrigins),  // CORS first
+    middleware.Auth(&middleware.AuthConfig{
+        PublicPaths: []string{"/health", "/", "/metrics"},  // Include /metrics
+        ...
+    }),
+)
+```
+
+#### Future Middleware Additions
+
+When adding new middleware:
+
+1. **Review execution order**: Understand when your middleware needs to run relative to CORS and Auth
+2. **Consider OPTIONS requests**: If your middleware validates/modifies requests, ensure OPTIONS can bypass it
+3. **Preserve CORS → Auth order**: Never insert middleware between CORS and Auth that would break preflight
+4. **Test with browser**: Use browser DevTools to verify preflight works correctly
+5. **Update documentation**: Document your middleware's position and reasoning
 
 ---
 

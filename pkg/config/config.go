@@ -86,7 +86,7 @@ func Load() (*Config, error) {
 		OIDCSkipExpiryCheck:    parseBool(getEnv("OIDC_SKIP_EXPIRY_CHECK", "false")),
 		OIDCSkipClientIDCheck:  parseBool(getEnv("OIDC_SKIP_CLIENT_ID_CHECK", "false")),
 		OIDCSkipIssuerCheck:    parseBool(getEnv("OIDC_SKIP_ISSUER_CHECK", "false")),
-		AuthPublicPaths:        parseCommaSeparatedList(getEnv("AUTH_PUBLIC_PATHS", "/health,/")),
+		AuthPublicPaths:        parseCommaSeparatedList(getEnv("AUTH_PUBLIC_PATHS", "/health,/,/metrics")),
 		AuthRequiredRole:       getEnv("AUTH_REQUIRED_ROLE", ""),
 		AuthRequiredPermission: getEnv("AUTH_REQUIRED_PERMISSION", ""),
 		AuthRequiredScope:      getEnv("AUTH_REQUIRED_SCOPE", ""),

@@ -250,12 +250,13 @@ func main() {
 
 	// Apply middleware with configured CORS origins and auth
 	// Note: Prometheus middleware comes first to capture all request metrics
-	// Auth middleware comes after logging/recovery but before CORS to ensure security
+	// CORS must come before Auth to handle OPTIONS preflight requests
 	handler := middleware.Chain(
 		mux,
 		middleware.Prometheus(metricsCollector),
 		middleware.Logger(logger),
 		middleware.Recover(logger),
+		middleware.CORSWithOrigins(cfg.AllowedOrigins),
 		middleware.Auth(&middleware.AuthConfig{
 			Enabled:       cfg.AuthEnabled,
 			Authenticator: authenticator,
@@ -263,7 +264,6 @@ func main() {
 			Logger:        logger,
 			Metrics:       metricsCollector,
 		}),
-		middleware.CORSWithOrigins(cfg.AllowedOrigins),
 	)
 
 	// Configure server with timeouts from config
