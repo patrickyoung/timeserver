@@ -40,8 +40,26 @@ func main() {
 
 		logger.Info("starting MCP server in stdio mode")
 
-		// Create basic MCP server without metrics (stdio mode doesn't need HTTP metrics)
-		mcpServer := mcpserver.NewServer(logger)
+		// Initialize database for stdio mode
+		dbConfig := db.DefaultConfig()
+		database, err := db.Open(dbConfig, logger)
+		if err != nil {
+			logger.Error("failed to open database", "error", err)
+			os.Exit(1)
+		}
+		defer database.Close()
+
+		// Run migrations
+		if err := db.Migrate(database, logger); err != nil {
+			logger.Error("failed to run migrations", "error", err)
+			os.Exit(1)
+		}
+
+		// Initialize location repository
+		locationRepo := repository.NewLocationRepository(database)
+
+		// Create MCP server with location repository (no metrics in stdio mode)
+		mcpServer := mcpserver.NewServer(logger, locationRepo)
 
 		if err := server.ServeStdio(mcpServer); err != nil {
 			logger.Error("MCP stdio server error", "error", err)
@@ -156,8 +174,8 @@ func main() {
 	metricsCollector := metrics.New("timeservice")
 	metricsCollector.SetBuildInfo(version.Version, runtime.Version())
 
-	// Create MCP server with metrics
-	mcpServer := mcpserver.NewServerWithMetrics(logger, metricsCollector)
+	// Create MCP server with metrics and location repository
+	mcpServer := mcpserver.NewServerWithMetrics(logger, metricsCollector, locationRepo)
 
 	// Otherwise run HTTP server with both REST endpoints and MCP support
 

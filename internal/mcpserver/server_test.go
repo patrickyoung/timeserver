@@ -11,7 +11,8 @@ import (
 func TestNewServer(t *testing.T) {
 	logger, logHandler := testutil.NewTestLogger()
 
-	server := NewServer(logger)
+	// Pass nil repository for testing without database
+	server := NewServer(logger, nil)
 
 	if server == nil {
 		t.Fatal("expected server to be created")
