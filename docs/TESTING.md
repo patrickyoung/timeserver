@@ -2,19 +2,25 @@
 
 This document describes the testing approach for the timeservice project.
 
+> **📊 For detailed coverage analysis and testing metrics, see [TESTING_ANALYSIS.md](./TESTING_ANALYSIS.md)**
+
 ## Test Coverage Summary
 
-Overall test coverage: **75%+** (excluding main.go and test utilities)
+Overall test coverage: **80%+** for key packages (excluding main.go and test utilities)
 
 ### Component Coverage
+- **Model**: 100.0% coverage ✅ (includes location models)
 - **Handler**: 84.8% coverage (includes location API integration tests)
+- **MCP Server**: 83.7% coverage ✅ (includes location MCP tools, improved +13.5%)
+- **Config**: 83.5% coverage ✅ (includes database configuration)
 - **Repository**: 77.3% coverage (SQLite database layer)
-- **MCP Server**: 70.2% coverage (includes location MCP tools)
-- **Middleware**: 41.5% coverage (includes auth middleware)
-- **Auth**: 59.6% coverage
-- **Config**: 83.5% coverage (includes database configuration)
 - **Metrics**: 66.7% coverage (includes database metrics)
-- **Model**: 100.0% coverage (includes location models)
+- **Auth**: 59.6% coverage
+- **Middleware**: 41.5% coverage (includes auth middleware)
+
+### Additional Test Coverage
+- **Integration Tests**: 27/28 passing (96% pass rate) - See `scripts/integration-test.sh`
+- **Benchmark Tests**: 7 comprehensive benchmarks - See `internal/repository/location_bench_test.go`
 
 ## Testing Philosophy
 

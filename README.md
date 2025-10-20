@@ -1596,6 +1596,30 @@ The metrics implementation follows Prometheus best practices:
 4. **Namespace**: All metrics use `timeservice` namespace to avoid conflicts
 5. **Standard Buckets**: Histograms use Prometheus default buckets for broad coverage
 
+## Documentation
+
+Comprehensive documentation is available in the `docs/` directory:
+
+### Core Documentation
+- **[TESTING.md](docs/TESTING.md)** - Testing strategy, coverage summary, and test organization
+- **[TESTING_ANALYSIS.md](docs/TESTING_ANALYSIS.md)** - Detailed coverage analysis and testing metrics
+- **[SECURITY.md](docs/SECURITY.md)** - Security practices, authentication, and threat model
+- **[DEVSECOPS.md](docs/DEVSECOPS.md)** - DevSecOps practices, security controls, and compliance
+- **[DESIGN.md](docs/DESIGN.md)** - System architecture and design decisions
+
+### Architecture Decision Records (ADRs)
+The `docs/adr/` directory contains detailed architecture decisions:
+- **[ADR 0001](docs/adr/0001-use-mcp-go-sdk.md)** - MCP-Go SDK adoption
+- **[ADR 0002](docs/adr/0002-sqlite-for-persistence.md)** - SQLite database selection
+- **[ADR 0003](docs/adr/0003-prometheus-metrics.md)** - Prometheus metrics strategy
+- **[ADR 0004](docs/adr/0004-structured-logging-with-slog.md)** - Structured logging with slog
+- **[ADR 0005](docs/adr/0005-oauth2-oidc-jwt-authorization.md)** - OAuth2/OIDC authorization
+- **[ADR 0006](docs/adr/0006-mcp-http-transport.md)** - MCP HTTP transport implementation
+- **[ADR 0007](docs/adr/0007-location-time-tracking.md)** - Location-based time tracking feature
+
+### Implementation Plans
+The `docs/implementation-plans/` directory contains phased implementation guides for major features.
+
 ## License
 
 MIT License
