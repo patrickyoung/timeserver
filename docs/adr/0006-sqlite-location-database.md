@@ -122,10 +122,10 @@ db, err := sql.Open("sqlite", "file:data/timeservice.db?"+
 
 ### Migration Strategy
 
-Use simple SQL migration files in `db/migrations/`:
+Use simple SQL migration files in `pkg/db/migrations/` (embedded via go:embed):
 ```
-001_create_locations.up.sql
-001_create_locations.down.sql
+pkg/db/migrations/001_create_locations.up.sql
+pkg/db/migrations/001_create_locations.down.sql
 ```
 
 Migrations applied automatically on startup via `pkg/db/migrate.go`.

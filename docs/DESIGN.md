@@ -23,8 +23,6 @@ This document captures the technical design patterns, conventions, and operation
 ├── cmd/
 │   ├── server/          # Entry point managing mode selection, HTTP mux, graceful shutdown
 │   └── healthcheck/     # Tiny probe binary for container health checks
-├── db/
-│   └── migrations/      # SQL migration files (*.up.sql, *.down.sql)
 ├── internal/
 │   ├── handler/         # HTTP handlers (time, health, service info, MCP proxy, locations)
 │   ├── middleware/      # Logging, recovery, auth, CORS enforcement, Prometheus instrumentation
@@ -35,6 +33,7 @@ This document captures the technical design patterns, conventions, and operation
     ├── auth/            # OIDC authentication, JWT verification, claims authorization
     ├── config/          # Environment-driven configuration and validation
     ├── db/              # Database connection management, migration engine
+    │   └── migrations/  # SQL migration files (*.up.sql, *.down.sql)
     ├── metrics/         # Prometheus collectors, build info instrumentation
     ├── model/           # Response models shared by HTTP and MCP paths
     └── version/         # Canonical service name and version constants
@@ -42,7 +41,7 @@ This document captures the technical design patterns, conventions, and operation
 
 - **ADRs** in `docs/adr/` document major architectural decisions (dual interface, configuration guardrails, observability, container hardening, authentication, database choice).
 - **Supporting manifests** (`Dockerfile`, `docker-compose.yml`, `k8s/`) reflect deployment patterns aligned with the Go code.
-- **Migrations** in `db/migrations/` define schema changes applied automatically on startup.
+- **Migrations** in `pkg/db/migrations/` define schema changes applied automatically on startup (embedded via go:embed).
 
 ---
 
@@ -120,7 +119,7 @@ The service uses **SQLite** with **modernc.org/sqlite** (pure Go driver) for nam
 - **Embedded**: Single-file database, no separate server process
 - **Performance optimized**: WAL mode, 64MB cache, connection pooling
 - **ACID compliant**: Reliable transactions and crash recovery
-- **Auto-migrations**: Schema changes applied on startup from `db/migrations/`
+- **Auto-migrations**: Schema changes applied on startup from `pkg/db/migrations/`
 
 ### 5a.2 Schema Design
 
@@ -167,9 +166,9 @@ type LocationRepository interface {
 
 ### 5a.4 Migration Management
 
-Migrations are embedded in the binary (`pkg/db/db.go`):
-- `db/migrations/*.up.sql` - Schema changes
-- `db/migrations/*.down.sql` - Rollback scripts
+Migrations are embedded in the binary using go:embed (`pkg/db/db.go`):
+- `pkg/db/migrations/*.up.sql` - Schema changes
+- `pkg/db/migrations/*.down.sql` - Rollback scripts
 - `schema_migrations` table tracks applied versions
 - Automatic application on startup
 - Transactional (all or nothing)

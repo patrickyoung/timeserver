@@ -37,8 +37,8 @@ This document outlines a phased implementation plan for adding named location ma
 
 **Completed Work**:
 - ✅ ADR 0006 - SQLite vs Turso comparison and decision
-- ✅ Database schema design (`db/migrations/001_create_locations.up.sql`)
-- ✅ Migration rollback script (`db/migrations/001_create_locations.down.sql`)
+- ✅ Database schema design (`pkg/db/migrations/001_create_locations.up.sql`)
+- ✅ Migration rollback script (`pkg/db/migrations/001_create_locations.down.sql`)
 - ✅ Database connection package (`pkg/db/db.go` - 295 lines)
   - Connection management with performance pragmas
   - WAL mode, cache configuration, busy timeout
@@ -1123,7 +1123,7 @@ If migrations cause issues:
 
 ```bash
 # Manual rollback (if needed)
-sqlite3 data/timeservice.db < db/migrations/001_create_locations.down.sql
+sqlite3 data/timeservice.db < pkg/db/migrations/001_create_locations.down.sql
 
 # Or delete database and start fresh
 rm -f data/timeservice.db
