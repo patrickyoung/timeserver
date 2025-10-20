@@ -5,12 +5,13 @@ A simple Go web service that provides the current server time through both a sta
 ## Features
 
 - **REST API**: Simple endpoint to get current server time
+- **Named Locations**: SQLite-backed storage for custom location management
 - **MCP Server**: Model Context Protocol server with time-related tools
 - **Authentication & Authorization**: OAuth2/OIDC with JWT-based claims authorization
 - **Structured Logging**: JSON-formatted logs with slog
 - **Graceful Shutdown**: Proper cleanup on termination signals
 - **Middleware Stack**: Logging, recovery, authentication, and CORS support
-- **Prometheus Metrics**: HTTP and MCP metrics including auth metrics
+- **Prometheus Metrics**: HTTP and MCP metrics including auth and database metrics
 - **Minimal Docker Image**: Multi-stage build producing <10MB images
 
 ## Quick Start
@@ -106,6 +107,9 @@ Response:
   "version": "1.0.0",
   "endpoints": {
     "time": "GET /api/time",
+    "locations": "GET /api/locations",
+    "location_detail": "GET /api/locations/{name}",
+    "location_time": "GET /api/locations/{name}/time",
     "mcp": "POST /mcp",
     "health": "GET /health"
   },
@@ -302,6 +306,298 @@ curl -X POST http://localhost:8080/mcp \
       }
     }
   }'
+```
+
+## Named Location Management
+
+The service provides database-backed storage for managing named locations with their associated IANA timezones. This allows you to define custom location names (like "headquarters", "tokyo-office", "datacenter-west") and query the current time for those locations without remembering timezone strings.
+
+### Location Storage
+
+- **Database**: SQLite with performance optimizations (WAL mode, 64MB cache)
+- **Schema**: Case-insensitive location names, IANA timezone validation
+- **Persistence**: Data stored in `data/timeservice.db` (configurable via `DB_PATH`)
+- **Auto-migrations**: Schema automatically created and updated on startup
+
+### Location API Endpoints
+
+#### Create a Location
+
+Create a new named location (requires `locations:write` permission when auth is enabled):
+
+```bash
+curl -X POST http://localhost:8080/api/locations \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "name": "headquarters",
+    "timezone": "America/New_York",
+    "description": "Company HQ in NYC"
+  }'
+```
+
+Response:
+```json
+{
+  "id": 1,
+  "name": "headquarters",
+  "timezone": "America/New_York",
+  "description": "Company HQ in NYC",
+  "created_at": "2025-10-19T10:00:00Z",
+  "updated_at": "2025-10-19T10:00:00Z"
+}
+```
+
+#### List All Locations
+
+Get all configured locations:
+
+```bash
+curl http://localhost:8080/api/locations
+```
+
+Response:
+```json
+{
+  "locations": [
+    {
+      "id": 1,
+      "name": "headquarters",
+      "timezone": "America/New_York",
+      "description": "Company HQ in NYC",
+      "created_at": "2025-10-19T10:00:00Z",
+      "updated_at": "2025-10-19T10:00:00Z"
+    },
+    {
+      "id": 2,
+      "name": "tokyo-office",
+      "timezone": "Asia/Tokyo",
+      "description": "Tokyo branch office",
+      "created_at": "2025-10-19T10:05:00Z",
+      "updated_at": "2025-10-19T10:05:00Z"
+    }
+  ]
+}
+```
+
+#### Get a Specific Location
+
+Retrieve details for a named location:
+
+```bash
+curl http://localhost:8080/api/locations/headquarters
+```
+
+Response:
+```json
+{
+  "id": 1,
+  "name": "headquarters",
+  "timezone": "America/New_York",
+  "description": "Company HQ in NYC",
+  "created_at": "2025-10-19T10:00:00Z",
+  "updated_at": "2025-10-19T10:00:00Z"
+}
+```
+
+#### Get Current Time for a Location
+
+Get the current time for a named location:
+
+```bash
+curl http://localhost:8080/api/locations/headquarters/time
+```
+
+Response:
+```json
+{
+  "location": "headquarters",
+  "timezone": "America/New_York",
+  "current_time": "2025-10-19T06:30:45.123456-04:00",
+  "unix_time": 1729180245,
+  "formatted": "2025-10-19T06:30:45-04:00"
+}
+```
+
+#### Update a Location
+
+Update an existing location's timezone or description (requires `locations:write` permission):
+
+```bash
+curl -X PUT http://localhost:8080/api/locations/headquarters \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "timezone": "America/Los_Angeles",
+    "description": "Company HQ relocated to LA"
+  }'
+```
+
+#### Delete a Location
+
+Remove a named location (requires `locations:write` permission):
+
+```bash
+curl -X DELETE http://localhost:8080/api/locations/headquarters \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+Response:
+```json
+{
+  "message": "location deleted successfully"
+}
+```
+
+### Location MCP Tools
+
+The MCP server provides tools for managing locations through AI agents and other MCP clients.
+
+#### Add Location Tool
+
+Add a new named location:
+
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "add_location",
+      "arguments": {
+        "name": "london-office",
+        "timezone": "Europe/London",
+        "description": "London branch office"
+      }
+    }
+  }'
+```
+
+#### List Locations Tool
+
+List all configured locations:
+
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "list_locations",
+      "arguments": {}
+    }
+  }'
+```
+
+#### Get Location Time Tool
+
+Get current time for a named location:
+
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "get_location_time",
+      "arguments": {
+        "name": "london-office",
+        "format": "rfc3339"
+      }
+    }
+  }'
+```
+
+#### Update Location Tool
+
+Update an existing location:
+
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "update_location",
+      "arguments": {
+        "name": "london-office",
+        "timezone": "Europe/Paris",
+        "description": "Relocated to Paris"
+      }
+    }
+  }'
+```
+
+#### Remove Location Tool
+
+Remove a named location:
+
+```bash
+curl -X POST http://localhost:8080/mcp \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "tools/call",
+    "params": {
+      "name": "remove_location",
+      "arguments": {
+        "name": "london-office"
+      }
+    }
+  }'
+```
+
+### Location Database Configuration
+
+Configure the SQLite database location and performance settings:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_PATH` | `data/timeservice.db` | Path to SQLite database file |
+| `DB_MAX_OPEN_CONNS` | `25` | Maximum open database connections |
+| `DB_MAX_IDLE_CONNS` | `5` | Maximum idle connections in pool |
+| `DB_CACHE_SIZE` | `-64000` | Cache size (negative = pages, -64000 = ~64MB) |
+| `DB_BUSY_TIMEOUT` | `5000` | Busy timeout in milliseconds |
+
+**Example with custom database path:**
+```bash
+DB_PATH=/var/lib/timeservice/locations.db \
+ALLOWED_ORIGINS="https://example.com" \
+./bin/server
+```
+
+### Location Use Cases
+
+**Team Coordination:**
+```bash
+# Add team member locations
+curl -X POST .../api/locations -d '{"name":"alice-home","timezone":"America/New_York",...}'
+curl -X POST .../api/locations -d '{"name":"bob-home","timezone":"Europe/London",...}'
+
+# Check what time it is for Alice
+curl .../api/locations/alice-home/time
+```
+
+**Multi-Region Infrastructure:**
+```bash
+# Define datacenter locations
+curl -X POST .../api/locations -d '{"name":"us-east-dc","timezone":"America/New_York",...}'
+curl -X POST .../api/locations -d '{"name":"eu-west-dc","timezone":"Europe/Dublin",...}'
+curl -X POST .../api/locations -d '{"name":"ap-south-dc","timezone":"Asia/Singapore",...}'
+
+# Check maintenance window times
+curl .../api/locations/us-east-dc/time
+```
+
+**International Business Hours:**
+```bash
+# Store office locations
+curl -X POST .../api/locations -d '{"name":"corporate","timezone":"America/Chicago",...}'
+curl -X POST .../api/locations -d '{"name":"apac-support","timezone":"Asia/Tokyo",...}'
+
+# Quickly check if offices are open
+for loc in corporate apac-support; do
+  echo "$loc: $(curl -s .../api/locations/$loc/time | jq -r .formatted)"
+done
 ```
 
 ## Configuration
@@ -699,10 +995,23 @@ You can verify it's working by asking Claude: "What time is it in Tokyo right no
 
 ### Available MCP Tools
 
+**Time Tools:**
 - `get_current_time` - Get current server time in various formats and timezones
   - Parameters: `format` (iso8601, unix, unixmilli, rfc3339), `timezone` (IANA timezone name)
 - `add_time_offset` - Add hours/minutes offset to current time
   - Parameters: `hours` (number), `minutes` (number), `format` (output format)
+
+**Location Management Tools:**
+- `add_location` - Add a named location with timezone
+  - Parameters: `name` (string), `timezone` (IANA timezone), `description` (string, optional)
+- `list_locations` - List all configured locations
+  - Parameters: none
+- `get_location_time` - Get current time for a named location
+  - Parameters: `name` (string), `format` (output format, optional)
+- `update_location` - Update an existing location
+  - Parameters: `name` (string), `timezone` (IANA timezone, optional), `description` (string, optional)
+- `remove_location` - Remove a named location
+  - Parameters: `name` (string)
 
 ## MCP Protocol
 
