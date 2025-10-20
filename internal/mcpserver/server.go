@@ -143,6 +143,7 @@ func NewServer(log *slog.Logger, locationRepo repository.LocationRepository) *se
 }
 
 // NewServerWithMetrics creates and configures a new MCP server with metrics tracking
+// If locationRepo is nil, location tools will not be registered (feature disabled)
 func NewServerWithMetrics(log *slog.Logger, m *metrics.Metrics, locationRepo repository.LocationRepository) *server.MCPServer {
 	// Create server with capabilities and options
 	mcpServer := server.NewMCPServer(
@@ -189,8 +190,11 @@ func NewServerWithMetrics(log *slog.Logger, m *metrics.Metrics, locationRepo rep
 		return handleAddTimeOffset(ctx, request, log)
 	}))
 
-	// Register add_location tool
-	addLocationTool := mcp.NewTool("add_location",
+	// Register location tools (only if locationRepo is provided - feature flag controlled)
+	toolsList := []string{"get_current_time", "add_time_offset"}
+	if locationRepo != nil {
+		// Register add_location tool
+		addLocationTool := mcp.NewTool("add_location",
 		mcp.WithDescription("Add a named location with timezone"),
 		mcp.WithString("name",
 			mcp.Required(),
@@ -262,14 +266,20 @@ func NewServerWithMetrics(log *slog.Logger, m *metrics.Metrics, locationRepo rep
 		),
 	)
 
-	mcpServer.AddTool(getLocationTimeTool, wrapWithMetrics("get_location_time", m, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		return handleGetLocationTime(ctx, request, log, locationRepo)
-	}))
+		mcpServer.AddTool(getLocationTimeTool, wrapWithMetrics("get_location_time", m, func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleGetLocationTime(ctx, request, log, locationRepo)
+		}))
+
+		toolsList = append(toolsList, "add_location", "remove_location", "update_location", "list_locations", "get_location_time")
+		log.Info("location tools enabled in MCP server", "count", 5)
+	} else {
+		log.Info("location tools disabled in MCP server - locationRepo not provided")
+	}
 
 	log.Info("MCP server initialized",
 		"name", version.ServiceName,
 		"version", version.Version,
-		"tools", []string{"get_current_time", "add_time_offset", "add_location", "remove_location", "update_location", "list_locations", "get_location_time"},
+		"tools", toolsList,
 	)
 
 	return mcpServer

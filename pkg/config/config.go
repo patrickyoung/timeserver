@@ -49,6 +49,9 @@ type Config struct {
 	DBMaxIdleConns int
 	DBCacheSize    int // In KB (will be converted to negative pages for SQLite)
 	DBWalMode      bool
+
+	// Feature flags
+	LocationsEnabled bool // Enable/disable location management features (default: true)
 }
 
 // Load loads configuration from environment variables with validation
@@ -97,6 +100,9 @@ func Load() (*Config, error) {
 		DBMaxIdleConns: parseInt(getEnv("DB_MAX_IDLE_CONNS", "5"), 5),
 		DBCacheSize:    parseInt(getEnv("DB_CACHE_SIZE_KB", "64000"), 64000),
 		DBWalMode:      parseBool(getEnv("DB_WAL_MODE", "true")),
+
+		// Feature flags (defaults to enabled for backward compatibility)
+		LocationsEnabled: parseBool(getEnv("FEATURE_LOCATIONS_ENABLED", "true")),
 	}
 
 	// Validate configuration
@@ -202,11 +208,11 @@ func (c *Config) String() string {
 	return fmt.Sprintf("Config{Port:%s, Host:%s, LogLevel:%s, AllowedOrigins:%v, "+
 		"ReadTimeout:%v, WriteTimeout:%v, IdleTimeout:%v, ReadHeaderTimeout:%v, "+
 		"ShutdownTimeout:%v, MaxHeaderBytes:%d, DBPath:%s, DBMaxOpenConns:%d, "+
-		"DBMaxIdleConns:%d, DBCacheSize:%dKB, DBWalMode:%v}",
+		"DBMaxIdleConns:%d, DBCacheSize:%dKB, DBWalMode:%v, LocationsEnabled:%v}",
 		c.Port, c.Host, c.LogLevel, c.AllowedOrigins,
 		c.ReadTimeout, c.WriteTimeout, c.IdleTimeout, c.ReadHeaderTimeout,
 		c.ShutdownTimeout, c.MaxHeaderBytes, c.DBPath, c.DBMaxOpenConns,
-		c.DBMaxIdleConns, c.DBCacheSize, c.DBWalMode)
+		c.DBMaxIdleConns, c.DBCacheSize, c.DBWalMode, c.LocationsEnabled)
 }
 
 // Helper functions

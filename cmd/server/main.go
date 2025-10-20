@@ -59,8 +59,17 @@ func main() {
 		// Initialize metrics for stdio mode (minimal, for database tracking)
 		metricsCollector := metrics.New("timeservice")
 
-		// Initialize location repository with metrics
-		locationRepo := repository.NewLocationRepository(database, metricsCollector)
+		// Check feature flag for stdio mode
+		locationsEnabled := os.Getenv("FEATURE_LOCATIONS_ENABLED") != "false" // Default: true
+
+		// Initialize location repository with metrics (conditionally)
+		var locationRepo repository.LocationRepository
+		if locationsEnabled {
+			locationRepo = repository.NewLocationRepository(database, metricsCollector)
+			logger.Info("location features enabled in stdio mode")
+		} else {
+			logger.Info("location features disabled in stdio mode via FEATURE_LOCATIONS_ENABLED=false")
+		}
 
 		// Create MCP server with metrics and location repository
 		mcpServer := mcpserver.NewServerWithMetrics(logger, metricsCollector, locationRepo)
@@ -99,6 +108,7 @@ func main() {
 		"db_max_idle_conns", cfg.DBMaxIdleConns,
 		"db_cache_size_kb", cfg.DBCacheSize,
 		"db_wal_mode", cfg.DBWalMode,
+		"locations_enabled", cfg.LocationsEnabled,
 	)
 
 	// Warn if wildcard CORS is configured (security risk)
@@ -194,8 +204,14 @@ func main() {
 	metricsCollector := metrics.New("timeservice")
 	metricsCollector.SetBuildInfo(version.Version, runtime.Version())
 
-	// Initialize repositories with metrics
-	locationRepo := repository.NewLocationRepository(database, metricsCollector)
+	// Initialize repositories with metrics (conditionally based on feature flags)
+	var locationRepo repository.LocationRepository
+	if cfg.LocationsEnabled {
+		locationRepo = repository.NewLocationRepository(database, metricsCollector)
+		logger.Info("location repository initialized")
+	} else {
+		logger.Info("location repository disabled via feature flag")
+	}
 
 	// Start goroutine to periodically update database connection pool metrics
 	go func() {
@@ -209,6 +225,7 @@ func main() {
 	}()
 
 	// Create MCP server with metrics and location repository
+	// locationRepo will be nil if feature is disabled, causing MCP tools to be skipped
 	mcpServer := mcpserver.NewServerWithMetrics(logger, metricsCollector, locationRepo)
 
 	// Otherwise run HTTP server with both REST endpoints and MCP support
@@ -219,9 +236,6 @@ func main() {
 	// Create HTTP handler - only needs the StreamableHTTPServer, not the full MCPServer
 	h := handler.New(logger, mcpHTTPServer)
 
-	// Create location handler
-	locationHandler := handler.NewLocationHandler(locationRepo, logger)
-
 	// Setup router
 	mux := http.NewServeMux()
 
@@ -231,13 +245,19 @@ func main() {
 	// Time endpoint
 	mux.HandleFunc("GET /api/time", h.GetTime)
 
-	// Location management endpoints
-	mux.HandleFunc("POST /api/locations", locationHandler.CreateLocation)
-	mux.HandleFunc("GET /api/locations", locationHandler.ListLocations)
-	mux.HandleFunc("GET /api/locations/{name}", locationHandler.GetLocation)
-	mux.HandleFunc("PUT /api/locations/{name}", locationHandler.UpdateLocation)
-	mux.HandleFunc("DELETE /api/locations/{name}", locationHandler.DeleteLocation)
-	mux.HandleFunc("GET /api/locations/{name}/time", locationHandler.GetLocationTime)
+	// Location management endpoints (feature-flagged)
+	if cfg.LocationsEnabled {
+		locationHandler := handler.NewLocationHandler(locationRepo, logger)
+		mux.HandleFunc("POST /api/locations", locationHandler.CreateLocation)
+		mux.HandleFunc("GET /api/locations", locationHandler.ListLocations)
+		mux.HandleFunc("GET /api/locations/{name}", locationHandler.GetLocation)
+		mux.HandleFunc("PUT /api/locations/{name}", locationHandler.UpdateLocation)
+		mux.HandleFunc("DELETE /api/locations/{name}", locationHandler.DeleteLocation)
+		mux.HandleFunc("GET /api/locations/{name}/time", locationHandler.GetLocationTime)
+		logger.Info("location features enabled", "endpoints", 6)
+	} else {
+		logger.Info("location features disabled via FEATURE_LOCATIONS_ENABLED=false")
+	}
 
 	// MCP endpoint (HTTP transport) - POST only for JSON-RPC
 	mux.HandleFunc("POST /mcp", h.MCP)

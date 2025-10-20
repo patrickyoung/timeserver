@@ -484,27 +484,43 @@ func TestNewServerWithMetrics(t *testing.T) {
 	// Create a test metrics collector
 	m := metrics.New("test_mcpserver")
 
-	// Pass nil repository for testing without database
+	// Pass nil repository for testing without database - this disables location features
 	server := NewServerWithMetrics(logger, m, nil)
 
 	if server == nil {
 		t.Fatal("expected server to be created")
 	}
 
-	// Verify initialization was logged
-	logHandler.AssertInfoCount(t, 1)
+	// Verify initialization was logged (2 messages: feature disabled + server initialized)
+	logHandler.AssertInfoCount(t, 2)
 
-	if len(logHandler.InfoCalls) > 0 {
+	// Check for location tools disabled message
+	if len(logHandler.InfoCalls) >= 1 {
 		logCall := logHandler.InfoCalls[0]
+		if logCall.Msg != "location tools disabled in MCP server - locationRepo not provided" {
+			t.Errorf("expected 'location tools disabled' message, got %s", logCall.Msg)
+		}
+	}
+
+	// Check for MCP server initialized message
+	if len(logHandler.InfoCalls) >= 2 {
+		logCall := logHandler.InfoCalls[1]
 		if logCall.Msg != "MCP server initialized" {
-			t.Errorf("expected log message 'MCP server initialized', got %s", logCall.Msg)
+			t.Errorf("expected 'MCP server initialized' message, got %s", logCall.Msg)
 		}
 
-		// Verify tools were logged
+		// Verify only core tools were logged (no location tools)
 		foundTools := false
 		for _, attr := range logCall.Attrs {
 			if attr.Key == "tools" {
 				foundTools = true
+				// Should only have 2 tools when locations are disabled
+				toolsValue := attr.Value.Any()
+				if tools, ok := toolsValue.([]string); ok {
+					if len(tools) != 2 {
+						t.Errorf("expected 2 tools when locations disabled, got %d: %v", len(tools), tools)
+					}
+				}
 				break
 			}
 		}

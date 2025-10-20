@@ -578,6 +578,55 @@ DB_CACHE_SIZE_KB=32000 \
 ./bin/server
 ```
 
+### Feature Flags
+
+Control feature rollout and enable/disable functionality for controlled deployments:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FEATURE_LOCATIONS_ENABLED` | `true` | Enable/disable location management features |
+
+**What happens when you disable locations:**
+- Location API endpoints (`/api/locations/*`) are not registered
+- Location MCP tools (`add_location`, `remove_location`, etc.) are not available
+- Location repository is not initialized
+- Database migrations still run (for future re-enablement)
+- Core time endpoints (`/api/time`) and MCP tools (`get_current_time`, `add_time_offset`) remain available
+
+**Example - Disable locations during rollout:**
+```bash
+FEATURE_LOCATIONS_ENABLED=false \
+ALLOWED_ORIGINS="https://example.com" \
+./bin/server
+```
+
+**Example - Gradual rollout (enable for canary):**
+```bash
+# Canary deployment (locations enabled)
+FEATURE_LOCATIONS_ENABLED=true ./bin/server
+
+# Production deployment (locations disabled)
+FEATURE_LOCATIONS_ENABLED=false ./bin/server
+```
+
+**Server logs when feature is disabled:**
+```json
+{"level":"INFO","msg":"configuration loaded",...,"locations_enabled":false}
+{"level":"INFO","msg":"location repository disabled via feature flag"}
+{"level":"INFO","msg":"location tools disabled in MCP server - locationRepo not provided"}
+{"level":"INFO","msg":"location features disabled via FEATURE_LOCATIONS_ENABLED=false"}
+{"level":"INFO","msg":"MCP server initialized","tools":["get_current_time","add_time_offset"]}
+```
+
+**Server logs when feature is enabled (default):**
+```json
+{"level":"INFO","msg":"configuration loaded",...,"locations_enabled":true}
+{"level":"INFO","msg":"location repository initialized"}
+{"level":"INFO","msg":"location tools enabled in MCP server","count":5}
+{"level":"INFO","msg":"MCP server initialized","tools":["get_current_time","add_time_offset","add_location","remove_location","update_location","list_locations","get_location_time"]}
+{"level":"INFO","msg":"location features enabled","endpoints":6}
+```
+
 ### Database Backup and Restore
 
 The service includes a backup script for creating consistent database backups:
