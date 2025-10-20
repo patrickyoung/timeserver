@@ -272,12 +272,12 @@ func TestHandleUpdateLocation(t *testing.T) {
 	}
 
 	tests := []struct {
-		name         string
-		arguments    map[string]interface{}
+		name          string
+		arguments     map[string]interface{}
 		mockGetByName func(ctx context.Context, name string) (*model.Location, error)
-		mockUpdate   func(ctx context.Context, name string, loc *model.Location) error
-		shouldError  bool
-		errorMessage string
+		mockUpdate    func(ctx context.Context, name string, loc *model.Location) error
+		shouldError   bool
+		errorMessage  string
 	}{
 		{
 			name: "successful update timezone",
@@ -603,4 +603,3 @@ func TestHandleGetLocationTime(t *testing.T) {
 		})
 	}
 }
-

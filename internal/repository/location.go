@@ -291,14 +291,14 @@ func isSQLiteConstraintError(err error) bool {
 	}
 	// modernc.org/sqlite returns error strings containing "UNIQUE constraint"
 	return contains(err.Error(), "UNIQUE constraint") ||
-	       contains(err.Error(), "constraint failed")
+		contains(err.Error(), "constraint failed")
 }
 
 // contains checks if a string contains a substring (case-insensitive helper)
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) &&
-	       (s == substr || len(substr) == 0 ||
-	        findSubstring(s, substr))
+		(s == substr || len(substr) == 0 ||
+			findSubstring(s, substr))
 }
 
 // findSubstring is a simple substring search

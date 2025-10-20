@@ -30,12 +30,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 		Path:         ":memory:",
 		MaxOpenConns: 1,
 		MaxIdleConns: 1,
-		CacheSize:    -2000,     // Small cache for tests
+		CacheSize:    -2000, // Small cache for tests
 		BusyTimeout:  5000,
-		WalMode:      false,     // WAL mode not available for :memory:
+		WalMode:      false, // WAL mode not available for :memory:
 		SyncMode:     "NORMAL",
 		ForeignKeys:  true,
-		JournalMode:  "MEMORY",  // Use memory journal for in-memory DB
+		JournalMode:  "MEMORY", // Use memory journal for in-memory DB
 	}
 
 	database, err := db.Open(cfg, logger)

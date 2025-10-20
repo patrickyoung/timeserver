@@ -1,11 +1,14 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: timeservice
   labels:
     app: timeservice
 spec:
-  replicas: 2
+  # SQLite requires single instance due to file-based locking
+  # For horizontal scaling, consider migrating to PostgreSQL/MySQL
+  replicas: 1
+  serviceName: timeservice
   selector:
     matchLabels:
       app: timeservice
@@ -70,6 +73,18 @@ spec:
         - name: ALLOWED_ORIGINS
           value: "https://example.com,https://app.example.com"
 
+        # Database configuration
+        - name: DB_PATH
+          value: "/app/data/timeservice.db"
+        - name: DB_MAX_OPEN_CONNS
+          value: "25"
+        - name: DB_MAX_IDLE_CONNS
+          value: "5"
+        - name: DB_CACHE_SIZE_KB
+          value: "64000"
+        - name: DB_WAL_MODE
+          value: "true"
+
         # SECURITY: Authentication & Authorization (OAuth2/OIDC)
         # Uncomment and configure for production deployments
         # See docs/SECURITY.md for detailed setup instructions
@@ -131,6 +146,8 @@ spec:
           mountPath: /tmp
         - name: cache
           mountPath: /.cache
+        - name: data
+          mountPath: /app/data
 
       # Volumes
       volumes:
@@ -140,6 +157,21 @@ spec:
       - name: cache
         emptyDir:
           sizeLimit: 10Mi
+
+  # PersistentVolumeClaim template for database storage
+  # Each StatefulSet pod gets its own PVC for stable storage
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+      labels:
+        app: timeservice
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      # Optional: Specify storage class for specific provisioners
+      # storageClassName: "fast-ssd"
+      resources:
+        requests:
+          storage: 1Gi
 
 ---
 apiVersion: v1

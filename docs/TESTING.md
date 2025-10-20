@@ -4,16 +4,17 @@ This document describes the testing approach for the timeservice project.
 
 ## Test Coverage Summary
 
-Overall test coverage: **60%+** (excluding main.go and test utilities)
+Overall test coverage: **75%+** (excluding main.go and test utilities)
 
 ### Component Coverage
-- **Handler**: 96.6% coverage
-- **MCP Server**: 63.5% coverage
-- **Middleware**: 41.5% coverage (includes new auth middleware)
+- **Handler**: 84.8% coverage (includes location API integration tests)
+- **Repository**: 77.3% coverage (SQLite database layer)
+- **MCP Server**: 70.2% coverage (includes location MCP tools)
+- **Middleware**: 41.5% coverage (includes auth middleware)
 - **Auth**: 59.6% coverage
-- **Config**: 81.6% coverage
-- **Metrics**: 66.7% coverage
-- **Model**: 100.0% coverage
+- **Config**: 83.5% coverage (includes database configuration)
+- **Metrics**: 66.7% coverage (includes database metrics)
+- **Model**: 100.0% coverage (includes location models)
 
 ## Testing Philosophy
 
@@ -31,22 +32,28 @@ This project follows modern Go testing practices:
 .
 ├── internal/
 │   ├── handler/
-│   │   └── handler_test.go          # HTTP handler tests
+│   │   ├── handler_test.go                  # HTTP handler tests
+│   │   └── location_integration_test.go     # Location API integration tests
 │   ├── mcpserver/
-│   │   └── server_test.go           # MCP tool handler tests
+│   │   ├── server_test.go                   # MCP tool handler tests
+│   │   └── location_tools_test.go           # Location MCP tool tests
 │   ├── middleware/
-│   │   └── middleware_test.go       # Middleware chain tests
+│   │   └── middleware_test.go               # Middleware chain tests
+│   ├── repository/
+│   │   └── location_test.go                 # Repository layer tests
 │   └── testutil/
-│       └── testutil.go              # Mock implementations
+│       └── testutil.go                      # Mock implementations
 └── pkg/
     ├── auth/
-    │   └── auth_test.go             # Auth package tests
+    │   └── auth_test.go                     # Auth package tests
     ├── config/
-    │   └── config_test.go           # Configuration tests
+    │   └── config_test.go                   # Configuration tests
+    ├── db/
+    │   └── (integration tested via repository)
     ├── metrics/
-    │   └── metrics_test.go          # Metrics tests
+    │   └── metrics_test.go                  # Metrics tests
     └── model/
-        └── model_test.go            # Model constructor tests
+        └── model_test.go                    # Model validation tests
 ```
 
 ## Test Utilities
@@ -183,6 +190,87 @@ go tool cover -html=coverage.out
 - `TestTimeResponseWithDifferentTimezones` - Timezone handling
 - `TestNewServiceInfo` - Service info construction
 - `TestServiceInfoStructure` - Service info structure validation
+- `TestValidateName` - Location name validation (table-driven)
+- `TestValidateTimezone` - Timezone validation with IANA database
+- `TestValidateDescription` - Description length validation
+- `TestLocation_Validate` - Complete location validation
+- `TestCreateLocationRequest_Validate` - Create request validation
+- `TestUpdateLocationRequest_Validate` - Update request validation
+
+#### Repository Tests (`internal/repository/location_test.go`)
+- `TestCreate` - Location creation (table-driven)
+  - Successful creation with ID assignment
+  - Duplicate name handling (case-insensitive)
+  - Validation errors
+- `TestGetByName` - Location retrieval (table-driven)
+  - Successful retrieval
+  - Case-insensitive lookup
+  - Not found handling
+- `TestUpdate` - Location updates (table-driven)
+  - Timezone updates
+  - Description updates
+  - Not found handling
+- `TestDelete` - Location deletion (table-driven)
+  - Successful deletion
+  - Not found handling
+- `TestList` - Location listing
+  - Empty database
+  - Multiple locations with sorting
+  - Empty slice (not nil) for consistency
+- `TestContextCancellation` - Context cancellation handling
+- `TestConcurrentAccess` - Concurrent database operations
+- `TestDescriptionHandling` - Empty and nil description handling
+
+**Test Setup:** Uses in-memory SQLite database (`:memory:`) for fast, isolated tests with full schema migrations.
+
+#### Location Handler Integration Tests (`internal/handler/location_integration_test.go`)
+- `TestLocationIntegration_FullCRUDWorkflow` - Complete CRUD flow
+  - Create → Read → Update → Delete
+  - Uses temporary SQLite database
+- `TestLocationIntegration_GetLocationTime` - Time for location
+  - Validates timezone conversion
+  - Format and timezone correctness
+- `TestLocationIntegration_ErrorScenarios` - Error handling
+  - Invalid JSON payloads
+  - Missing required fields
+  - Invalid timezones
+  - Not found errors
+  - Duplicate names
+- `TestLocationIntegration_ListLocations` - List endpoint
+  - Empty list handling
+  - Multiple locations with ordering
+
+**Test Setup:** Uses temporary on-disk SQLite database with full migrations for realistic integration testing.
+
+#### Location MCP Tool Tests (`internal/mcpserver/location_tools_test.go`)
+- `TestHandleAddLocation` - Add location tool (table-driven)
+  - Successful creation
+  - Missing parameters
+  - Invalid timezones
+  - Duplicate locations
+  - Repository errors
+- `TestHandleRemoveLocation` - Remove location tool (table-driven)
+  - Successful deletion
+  - Missing parameters
+  - Not found handling
+  - Repository errors
+- `TestHandleUpdateLocation` - Update location tool (table-driven)
+  - Timezone updates
+  - Description updates
+  - Missing parameters
+  - Not found handling
+  - Invalid timezones
+- `TestHandleListLocations` - List locations tool (table-driven)
+  - Multiple locations
+  - Empty list handling
+  - Repository errors
+- `TestHandleGetLocationTime` - Get location time tool (table-driven)
+  - Successful time retrieval
+  - Missing parameters
+  - Location not found
+  - Repository errors
+
+**Test Approach:** Uses mock repository for isolated unit testing of MCP tool handlers.
 
 ## Best Practices Demonstrated
 

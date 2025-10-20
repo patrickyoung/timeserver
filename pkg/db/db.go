@@ -18,29 +18,29 @@ var migrationsFS embed.FS
 
 // Config holds database configuration
 type Config struct {
-	Path          string
-	MaxOpenConns  int
-	MaxIdleConns  int
-	CacheSize     int  // In KB, negative for pages
-	BusyTimeout   int  // In milliseconds
-	WalMode       bool // Use Write-Ahead Logging
-	SyncMode      string // OFF, NORMAL, FULL, EXTRA
-	ForeignKeys   bool
-	JournalMode   string // DELETE, TRUNCATE, PERSIST, MEMORY, WAL, OFF
+	Path         string
+	MaxOpenConns int
+	MaxIdleConns int
+	CacheSize    int    // In KB, negative for pages
+	BusyTimeout  int    // In milliseconds
+	WalMode      bool   // Use Write-Ahead Logging
+	SyncMode     string // OFF, NORMAL, FULL, EXTRA
+	ForeignKeys  bool
+	JournalMode  string // DELETE, TRUNCATE, PERSIST, MEMORY, WAL, OFF
 }
 
 // DefaultConfig returns sensible defaults for production
 func DefaultConfig() *Config {
 	return &Config{
-		Path:          "data/timeservice.db",
-		MaxOpenConns:  25,
-		MaxIdleConns:  5,
-		CacheSize:     -64000, // 64MB cache (negative = pages)
-		BusyTimeout:   5000,   // 5 seconds
-		WalMode:       true,
-		SyncMode:      "NORMAL", // Safe for WAL mode, faster than FULL
-		ForeignKeys:   true,
-		JournalMode:   "WAL",
+		Path:         "data/timeservice.db",
+		MaxOpenConns: 25,
+		MaxIdleConns: 5,
+		CacheSize:    -64000, // 64MB cache (negative = pages)
+		BusyTimeout:  5000,   // 5 seconds
+		WalMode:      true,
+		SyncMode:     "NORMAL", // Safe for WAL mode, faster than FULL
+		ForeignKeys:  true,
+		JournalMode:  "WAL",
 	}
 }
 

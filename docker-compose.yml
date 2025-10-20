@@ -28,6 +28,13 @@ services:
     tmpfs:
       - /tmp:noexec,nosuid,size=10M
 
+    # Volume mount for database persistence
+    # The database file is stored in a named volume for data persistence across restarts
+    # To backup: docker run --rm -v timeservice-data:/data -v $(pwd)/backups:/backup alpine tar czf /backup/timeservice-data-$(date +%Y%m%d).tar.gz -C /data .
+    # To restore: docker run --rm -v timeservice-data:/data -v $(pwd)/backups:/backup alpine tar xzf /backup/timeservice-data-YYYYMMDD.tar.gz -C /data
+    volumes:
+      - timeservice-data:/app/data
+
     # Port mapping (host:container)
     ports:
       - "8080:8080"
@@ -38,6 +45,13 @@ services:
       # SECURITY: Set explicit CORS origins for production
       # For dev: use ALLOW_CORS_WILDCARD_DEV=true
       - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:8080
+
+      # Database configuration
+      - DB_PATH=/app/data/timeservice.db
+      - DB_MAX_OPEN_CONNS=25
+      - DB_MAX_IDLE_CONNS=5
+      - DB_CACHE_SIZE_KB=64000
+      - DB_WAL_MODE=true
 
       # SECURITY: Authentication (disabled by default for backward compatibility)
       # To enable auth, uncomment the lines below and configure your OIDC provider:
@@ -81,3 +95,13 @@ services:
       - "prometheus.scrape=true"
       - "prometheus.port=8080"
       - "prometheus.path=/metrics"
+
+# Named volumes for data persistence
+volumes:
+  timeservice-data:
+    driver: local
+    # Optional: Specify driver options for different backends
+    # driver_opts:
+    #   type: none
+    #   device: /path/to/local/directory
+    #   o: bind

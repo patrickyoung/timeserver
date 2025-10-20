@@ -8,10 +8,10 @@ import (
 // Metrics holds all Prometheus metrics for the application
 type Metrics struct {
 	// HTTP metrics
-	HTTPRequestsTotal   *prometheus.CounterVec
-	HTTPRequestDuration *prometheus.HistogramVec
-	HTTPRequestSize     *prometheus.HistogramVec
-	HTTPResponseSize    *prometheus.HistogramVec
+	HTTPRequestsTotal    *prometheus.CounterVec
+	HTTPRequestDuration  *prometheus.HistogramVec
+	HTTPRequestSize      *prometheus.HistogramVec
+	HTTPResponseSize     *prometheus.HistogramVec
 	HTTPRequestsInFlight prometheus.Gauge
 
 	// MCP tool metrics

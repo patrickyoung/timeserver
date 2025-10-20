@@ -167,7 +167,7 @@ func main() {
 		MaxOpenConns: cfg.DBMaxOpenConns,
 		MaxIdleConns: cfg.DBMaxIdleConns,
 		CacheSize:    -cfg.DBCacheSize, // Convert KB to negative pages for SQLite
-		BusyTimeout:  5000,              // 5 seconds
+		BusyTimeout:  5000,             // 5 seconds
 		WalMode:      cfg.DBWalMode,
 		SyncMode:     "NORMAL",
 		ForeignKeys:  true,

@@ -10,10 +10,10 @@ import (
 func TestLoad(t *testing.T) {
 	// Save current environment
 	oldEnv := map[string]string{
-		"PORT":                        os.Getenv("PORT"),
-		"LOG_LEVEL":                   os.Getenv("LOG_LEVEL"),
-		"ALLOWED_ORIGINS":             os.Getenv("ALLOWED_ORIGINS"),
-		"ALLOW_CORS_WILDCARD_DEV":     os.Getenv("ALLOW_CORS_WILDCARD_DEV"),
+		"PORT":                    os.Getenv("PORT"),
+		"LOG_LEVEL":               os.Getenv("LOG_LEVEL"),
+		"ALLOWED_ORIGINS":         os.Getenv("ALLOWED_ORIGINS"),
+		"ALLOW_CORS_WILDCARD_DEV": os.Getenv("ALLOW_CORS_WILDCARD_DEV"),
 	}
 	defer func() {
 		for k, v := range oldEnv {
@@ -368,7 +368,7 @@ func TestParseLogLevel(t *testing.T) {
 		{"error", slog.LevelError},
 		{"ERROR", slog.LevelError},
 		{"invalid", slog.LevelInfo}, // defaults to info
-		{"", slog.LevelInfo},         // defaults to info
+		{"", slog.LevelInfo},        // defaults to info
 	}
 
 	for _, tt := range tests {
@@ -389,7 +389,7 @@ func TestParseAllowedOrigins(t *testing.T) {
 		{"*", []string{"*"}},
 		{"https://example.com", []string{"https://example.com"}},
 		{"https://example.com,https://app.example.com", []string{"https://example.com", "https://app.example.com"}},
-		{"https://example.com, https://app.example.com", []string{"https://example.com", "https://app.example.com"}}, // with spaces
+		{"https://example.com, https://app.example.com", []string{"https://example.com", "https://app.example.com"}},        // with spaces
 		{"  https://example.com  ,  https://app.example.com  ", []string{"https://example.com", "https://app.example.com"}}, // extra spaces
 	}
 

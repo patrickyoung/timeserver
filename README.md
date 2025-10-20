@@ -555,8 +555,8 @@ Configure the SQLite database location and performance settings:
 | `DB_PATH` | `data/timeservice.db` | Path to SQLite database file |
 | `DB_MAX_OPEN_CONNS` | `25` | Maximum open database connections |
 | `DB_MAX_IDLE_CONNS` | `5` | Maximum idle connections in pool |
-| `DB_CACHE_SIZE` | `-64000` | Cache size (negative = pages, -64000 = ~64MB) |
-| `DB_BUSY_TIMEOUT` | `5000` | Busy timeout in milliseconds |
+| `DB_CACHE_SIZE_KB` | `64000` | Cache size in KB (converted to pages internally) |
+| `DB_WAL_MODE` | `true` | Enable Write-Ahead Logging for better concurrency |
 
 **Example with custom database path:**
 ```bash
@@ -564,6 +564,69 @@ DB_PATH=/var/lib/timeservice/locations.db \
 ALLOWED_ORIGINS="https://example.com" \
 ./bin/server
 ```
+
+**Performance Tuning:**
+```bash
+# For high-traffic workloads
+DB_MAX_OPEN_CONNS=50 \
+DB_CACHE_SIZE_KB=128000 \
+./bin/server
+
+# For low-memory environments
+DB_MAX_OPEN_CONNS=10 \
+DB_CACHE_SIZE_KB=32000 \
+./bin/server
+```
+
+### Database Backup and Restore
+
+The service includes a backup script for creating consistent database backups:
+
+**Create a Backup:**
+```bash
+# Basic usage
+./scripts/backup-db.sh data/timeservice.db backups/
+
+# With custom retention (days)
+RETENTION_DAYS=30 ./scripts/backup-db.sh data/timeservice.db backups/
+```
+
+The script uses SQLite's `VACUUM INTO` command to create optimized, consistent backups and automatically removes backups older than the retention period (default: 7 days).
+
+**Restore from Backup:**
+```bash
+# Stop the service
+docker-compose down
+
+# Replace database with backup
+cp backups/timeservice_20251020_094227.db data/timeservice.db
+
+# Restart service
+docker-compose up -d
+```
+
+**Docker Compose Backup:**
+```bash
+# Backup volume data
+docker run --rm -v time-server_timeservice-data:/data -v $(pwd)/backups:/backup alpine \
+  tar czf /backup/timeservice-data-$(date +%Y%m%d).tar.gz -C /data .
+
+# Restore volume data
+docker run --rm -v time-server_timeservice-data:/data -v $(pwd)/backups:/backup alpine \
+  tar xzf /backup/timeservice-data-YYYYMMDD.tar.gz -C /data
+```
+
+**Kubernetes Backup:**
+```bash
+# Copy database from pod
+kubectl cp timeservice-0:/app/data/timeservice.db ./timeservice-backup.db
+
+# Restore to pod
+kubectl cp ./timeservice-backup.db timeservice-0:/app/data/timeservice.db
+kubectl rollout restart statefulset timeservice
+```
+
+For automated backups in Kubernetes, see `k8s/README.md` for CronJob examples.
 
 ### Location Use Cases
 

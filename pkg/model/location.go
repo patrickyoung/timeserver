@@ -57,12 +57,12 @@ type LocationTimeResponse struct {
 
 // Validation errors
 var (
-	ErrEmptyName           = errors.New("location name cannot be empty")
-	ErrNameTooLong         = errors.New("location name must be 100 characters or less")
-	ErrInvalidNameFormat   = errors.New("location name must contain only alphanumeric characters, hyphens, and underscores")
-	ErrEmptyTimezone       = errors.New("timezone cannot be empty")
-	ErrInvalidTimezone     = errors.New("invalid IANA timezone")
-	ErrDescriptionTooLong  = errors.New("description must be 500 characters or less")
+	ErrEmptyName          = errors.New("location name cannot be empty")
+	ErrNameTooLong        = errors.New("location name must be 100 characters or less")
+	ErrInvalidNameFormat  = errors.New("location name must contain only alphanumeric characters, hyphens, and underscores")
+	ErrEmptyTimezone      = errors.New("timezone cannot be empty")
+	ErrInvalidTimezone    = errors.New("invalid IANA timezone")
+	ErrDescriptionTooLong = errors.New("description must be 500 characters or less")
 )
 
 // Regular expression for valid location names (alphanumeric, hyphens, underscores)

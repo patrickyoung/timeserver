@@ -170,6 +170,7 @@ make ci-local          # Run ALL CI checks including security audit
 github.com/coreos/go-oidc/v3        v3.11.0   # OIDC client (auth)
 github.com/mark3labs/mcp-go         v0.7.0    # MCP server
 github.com/prometheus/client_golang v1.20.5   # Metrics
+modernc.org/sqlite                  v1.34.4   # Pure Go SQLite driver
 golang.org/x/oauth2                 v0.24.0   # OAuth2 (transitive)
 ```
 
@@ -366,6 +367,85 @@ securityContext:
 - ✅ Timezone validation
 - ✅ Format string validation
 - ✅ Offset bounds checking
+
+### 6.4 Database Security
+
+**SQLite Security Implementation**:
+
+**SQL Injection Prevention**:
+- ✅ **Parameterized Queries**: All database operations use prepared statements with `?` placeholders
+- ✅ **No String Concatenation**: Zero direct SQL string building
+- ✅ **Safe by Design**: Repository layer enforces parameter binding
+- ✅ **Type Safety**: Go's type system prevents type confusion attacks
+
+**Example (from `internal/repository/location.go`)**:
+```go
+// SAFE: Parameterized query
+query := `SELECT id, name, timezone FROM locations WHERE name = ? COLLATE NOCASE`
+err := r.db.QueryRowContext(ctx, query, name).Scan(...)
+
+// NEVER: String concatenation (NOT USED)
+// query := "SELECT * FROM locations WHERE name = '" + name + "'"  // ❌ DANGEROUS
+```
+
+**Input Validation**:
+- ✅ **Model Layer Validation**: All inputs validated before database operations
+- ✅ **Name Validation**: Alphanumeric, hyphens, underscores only (regex: `^[a-zA-Z0-9_-]+$`)
+- ✅ **Timezone Validation**: IANA timezone database verification
+- ✅ **Description Validation**: Length limits (500 characters max)
+- ✅ **Case-Insensitive Operations**: `COLLATE NOCASE` for predictable behavior
+
+**Backup Security**:
+- ✅ **Consistent Backups**: Uses `VACUUM INTO` for atomic backup creation
+- ✅ **Encryption at Rest**: Recommend volume-level encryption (LUKS, dm-crypt, cloud provider encryption)
+- ✅ **Access Control**: Backup script runs as non-root, inherits file permissions
+- ✅ **Retention Policy**: Automatic cleanup of old backups (default: 7 days)
+- ✅ **Backup Validation**: Script verifies SQLite integrity
+
+**Recommended Backup Encryption** (for production):
+```bash
+# Encrypt backup after creation
+./scripts/backup-db.sh data/timeservice.db backups/
+gpg --encrypt --recipient admin@example.com backups/timeservice_*.db
+
+# Or use encrypted storage backend
+# - Kubernetes: Encrypted PersistentVolumes
+# - Docker: Encrypted volume drivers
+# - Cloud: AWS EBS encryption, GCE disk encryption
+```
+
+**File Permissions**:
+- ✅ **Database Files**: Owned by appuser (UID 10001), mode 0644
+- ✅ **Data Directory**: Owned by appuser, mode 0755
+- ✅ **No World-Writable**: All database files have restricted permissions
+- ✅ **Container Isolation**: Read-only root filesystem, writable volume for /app/data only
+
+**Performance vs Security Trade-offs**:
+- ✅ **WAL Mode Enabled**: Better concurrency without sacrificing durability
+- ✅ **Synchronous=NORMAL**: Safe for WAL mode, balances performance and safety
+- ✅ **Foreign Keys Enabled**: Referential integrity enforcement
+- ✅ **Connection Pooling**: Prevents resource exhaustion attacks
+
+**Database Metrics** (for security monitoring):
+```
+# Monitor for potential security issues
+timeservice_db_query_duration_seconds{operation}  # Detect slow query attacks
+timeservice_db_queries_total{operation, status}    # Monitor for errors
+timeservice_db_errors_total{operation}             # Track database errors
+timeservice_db_connections_open                    # Connection pool exhaustion
+```
+
+**Known Limitations** (SQLite-specific):
+- ⚠️ **Single-Instance Only**: SQLite uses file locking, no horizontal scaling
+- ⚠️ **No Network Isolation**: Local file access only
+- ⚠️ **File-Level Encryption**: Requires OS or volume-level encryption
+- 📝 **Migration Path**: For multi-instance HA, migrate to PostgreSQL/MySQL
+
+**Future Enhancements**:
+- [ ] Add SQLite encryption extension (SQLCipher) for at-rest encryption
+- [ ] Implement backup encryption in backup script
+- [ ] Add database integrity verification to health checks
+- [ ] Consider migration to PostgreSQL for production HA deployments
 
 ---
 

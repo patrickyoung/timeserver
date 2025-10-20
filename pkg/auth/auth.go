@@ -21,11 +21,11 @@ type Authenticator struct {
 // Config holds auth configuration
 type Config struct {
 	// OIDC Provider configuration
-	IssuerURL           string
-	Audience            string
-	SkipExpiryCheck     bool
-	SkipClientIDCheck   bool
-	SkipIssuerCheck     bool
+	IssuerURL         string
+	Audience          string
+	SkipExpiryCheck   bool
+	SkipClientIDCheck bool
+	SkipIssuerCheck   bool
 
 	// Authorization requirements
 	RequiredRoles       []string

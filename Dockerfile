@@ -45,7 +45,10 @@ RUN apk add --no-cache \
     adduser -u 10001 -S appuser -G appgroup && \
     # Create directory for the application
     mkdir -p /app && \
-    chown -R appuser:appgroup /app
+    chown -R appuser:appgroup /app && \
+    # Create data directory for database persistence (mount volume here)
+    mkdir -p /app/data && \
+    chown -R appuser:appgroup /app/data
 
 # Copy CA certificates and timezone data from builder
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -70,6 +73,11 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 # Drop all capabilities and run with read-only root filesystem
 # These will be enforced at runtime via security context in k8s/docker run
+
+# Database persistence: Mount a volume at /app/data for database file
+# The database file will be stored at /app/data/timeservice.db
+# Example: docker run -v timeservice-data:/app/data ...
+VOLUME ["/app/data"]
 
 # Run the server (no args - server starts in HTTP mode by default)
 ENTRYPOINT ["/app/server"]

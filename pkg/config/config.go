@@ -32,22 +32,22 @@ type Config struct {
 	MaxHeaderBytes int
 
 	// Auth configuration
-	AuthEnabled             bool
-	OIDCIssuerURL           string
-	OIDCAudience            string
-	OIDCSkipExpiryCheck     bool
-	OIDCSkipClientIDCheck   bool
-	OIDCSkipIssuerCheck     bool
-	AuthPublicPaths         []string
-	AuthRequiredRole        string
-	AuthRequiredPermission  string
-	AuthRequiredScope       string
+	AuthEnabled            bool
+	OIDCIssuerURL          string
+	OIDCAudience           string
+	OIDCSkipExpiryCheck    bool
+	OIDCSkipClientIDCheck  bool
+	OIDCSkipIssuerCheck    bool
+	AuthPublicPaths        []string
+	AuthRequiredRole       string
+	AuthRequiredPermission string
+	AuthRequiredScope      string
 
 	// Database configuration
 	DBPath         string
 	DBMaxOpenConns int
 	DBMaxIdleConns int
-	DBCacheSize    int  // In KB (will be converted to negative pages for SQLite)
+	DBCacheSize    int // In KB (will be converted to negative pages for SQLite)
 	DBWalMode      bool
 }
 
@@ -80,16 +80,16 @@ func Load() (*Config, error) {
 		MaxHeaderBytes:    parseInt(getEnv("MAX_HEADER_BYTES", "1048576"), 1<<20), // 1MB default
 
 		// Auth configuration
-		AuthEnabled:             parseBool(getEnv("AUTH_ENABLED", "false")),
-		OIDCIssuerURL:           getEnv("OIDC_ISSUER_URL", ""),
-		OIDCAudience:            getEnv("OIDC_AUDIENCE", ""),
-		OIDCSkipExpiryCheck:     parseBool(getEnv("OIDC_SKIP_EXPIRY_CHECK", "false")),
-		OIDCSkipClientIDCheck:   parseBool(getEnv("OIDC_SKIP_CLIENT_ID_CHECK", "false")),
-		OIDCSkipIssuerCheck:     parseBool(getEnv("OIDC_SKIP_ISSUER_CHECK", "false")),
-		AuthPublicPaths:         parseCommaSeparatedList(getEnv("AUTH_PUBLIC_PATHS", "/health,/")),
-		AuthRequiredRole:        getEnv("AUTH_REQUIRED_ROLE", ""),
-		AuthRequiredPermission:  getEnv("AUTH_REQUIRED_PERMISSION", ""),
-		AuthRequiredScope:       getEnv("AUTH_REQUIRED_SCOPE", ""),
+		AuthEnabled:            parseBool(getEnv("AUTH_ENABLED", "false")),
+		OIDCIssuerURL:          getEnv("OIDC_ISSUER_URL", ""),
+		OIDCAudience:           getEnv("OIDC_AUDIENCE", ""),
+		OIDCSkipExpiryCheck:    parseBool(getEnv("OIDC_SKIP_EXPIRY_CHECK", "false")),
+		OIDCSkipClientIDCheck:  parseBool(getEnv("OIDC_SKIP_CLIENT_ID_CHECK", "false")),
+		OIDCSkipIssuerCheck:    parseBool(getEnv("OIDC_SKIP_ISSUER_CHECK", "false")),
+		AuthPublicPaths:        parseCommaSeparatedList(getEnv("AUTH_PUBLIC_PATHS", "/health,/")),
+		AuthRequiredRole:       getEnv("AUTH_REQUIRED_ROLE", ""),
+		AuthRequiredPermission: getEnv("AUTH_REQUIRED_PERMISSION", ""),
+		AuthRequiredScope:      getEnv("AUTH_REQUIRED_SCOPE", ""),
 
 		// Database configuration (defaults from db.DefaultConfig())
 		DBPath:         getEnv("DB_PATH", "data/timeservice.db"),

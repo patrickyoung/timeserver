@@ -99,10 +99,10 @@ func TestCreateLocation(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid JSON body",
-			requestBody: "invalid json",
+			name:           "invalid JSON body",
+			requestBody:    "invalid json",
 			expectedStatus: http.StatusBadRequest,
-			expectedError: "Invalid request body",
+			expectedError:  "Invalid request body",
 		},
 		{
 			name: "empty name validation",
@@ -111,7 +111,7 @@ func TestCreateLocation(t *testing.T) {
 				Timezone: "America/New_York",
 			},
 			expectedStatus: http.StatusBadRequest,
-			expectedError: "location name cannot be empty",
+			expectedError:  "location name cannot be empty",
 		},
 		{
 			name: "invalid timezone",
@@ -131,7 +131,7 @@ func TestCreateLocation(t *testing.T) {
 				return repository.ErrLocationExists
 			},
 			expectedStatus: http.StatusConflict,
-			expectedError: "Location already exists",
+			expectedError:  "Location already exists",
 		},
 		{
 			name: "repository error",
@@ -143,7 +143,7 @@ func TestCreateLocation(t *testing.T) {
 				return errors.New("database error")
 			},
 			expectedStatus: http.StatusInternalServerError,
-			expectedError: "Internal server error",
+			expectedError:  "Internal server error",
 		},
 	}
 
@@ -328,16 +328,16 @@ func TestUpdateLocation(t *testing.T) {
 			},
 		},
 		{
-			name:     "invalid JSON body",
-			pathName: "hq",
-			requestBody: "invalid json",
+			name:           "invalid JSON body",
+			pathName:       "hq",
+			requestBody:    "invalid json",
 			expectedStatus: http.StatusBadRequest,
-			expectedError: "Invalid request body",
+			expectedError:  "Invalid request body",
 		},
 		{
-			name:     "empty update request",
-			pathName: "hq",
-			requestBody: model.UpdateLocationRequest{},
+			name:           "empty update request",
+			pathName:       "hq",
+			requestBody:    model.UpdateLocationRequest{},
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
