@@ -17,8 +17,10 @@ import (
 	"github.com/yourorg/timeservice/internal/handler"
 	"github.com/yourorg/timeservice/internal/mcpserver"
 	"github.com/yourorg/timeservice/internal/middleware"
+	"github.com/yourorg/timeservice/internal/repository"
 	"github.com/yourorg/timeservice/pkg/auth"
 	"github.com/yourorg/timeservice/pkg/config"
+	"github.com/yourorg/timeservice/pkg/db"
 	"github.com/yourorg/timeservice/pkg/metrics"
 	"github.com/yourorg/timeservice/pkg/version"
 )
@@ -132,6 +134,24 @@ func main() {
 		)
 	}
 
+	// Initialize database
+	dbConfig := db.DefaultConfig()
+	database, err := db.Open(dbConfig, logger)
+	if err != nil {
+		logger.Error("failed to open database", "error", err)
+		os.Exit(1)
+	}
+
+	// Run migrations
+	if err := db.Migrate(database, logger); err != nil {
+		logger.Error("failed to run migrations", "error", err)
+		database.Close()
+		os.Exit(1)
+	}
+
+	// Initialize repositories
+	locationRepo := repository.NewLocationRepository(database)
+
 	// Initialize Prometheus metrics
 	metricsCollector := metrics.New("timeservice")
 	metricsCollector.SetBuildInfo(version.Version, runtime.Version())
@@ -147,6 +167,9 @@ func main() {
 	// Create HTTP handler - only needs the StreamableHTTPServer, not the full MCPServer
 	h := handler.New(logger, mcpHTTPServer)
 
+	// Create location handler
+	locationHandler := handler.NewLocationHandler(locationRepo, logger)
+
 	// Setup router
 	mux := http.NewServeMux()
 
@@ -155,6 +178,14 @@ func main() {
 
 	// Time endpoint
 	mux.HandleFunc("GET /api/time", h.GetTime)
+
+	// Location management endpoints
+	mux.HandleFunc("POST /api/locations", locationHandler.CreateLocation)
+	mux.HandleFunc("GET /api/locations", locationHandler.ListLocations)
+	mux.HandleFunc("GET /api/locations/{name}", locationHandler.GetLocation)
+	mux.HandleFunc("PUT /api/locations/{name}", locationHandler.UpdateLocation)
+	mux.HandleFunc("DELETE /api/locations/{name}", locationHandler.DeleteLocation)
+	mux.HandleFunc("GET /api/locations/{name}/time", locationHandler.GetLocationTime)
 
 	// MCP endpoint (HTTP transport) - POST only for JSON-RPC
 	mux.HandleFunc("POST /mcp", h.MCP)
@@ -229,6 +260,11 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("shutdown error", "error", err)
 		os.Exit(1)
+	}
+
+	// Close database connection
+	if err := db.Close(database, logger); err != nil {
+		logger.Error("database close error", "error", err)
 	}
 
 	logger.Info("server stopped gracefully")
