@@ -42,6 +42,13 @@ type Config struct {
 	AuthRequiredRole        string
 	AuthRequiredPermission  string
 	AuthRequiredScope       string
+
+	// Database configuration
+	DBPath         string
+	DBMaxOpenConns int
+	DBMaxIdleConns int
+	DBCacheSize    int  // In KB (will be converted to negative pages for SQLite)
+	DBWalMode      bool
 }
 
 // Load loads configuration from environment variables with validation
@@ -83,6 +90,13 @@ func Load() (*Config, error) {
 		AuthRequiredRole:        getEnv("AUTH_REQUIRED_ROLE", ""),
 		AuthRequiredPermission:  getEnv("AUTH_REQUIRED_PERMISSION", ""),
 		AuthRequiredScope:       getEnv("AUTH_REQUIRED_SCOPE", ""),
+
+		// Database configuration (defaults from db.DefaultConfig())
+		DBPath:         getEnv("DB_PATH", "data/timeservice.db"),
+		DBMaxOpenConns: parseInt(getEnv("DB_MAX_OPEN_CONNS", "25"), 25),
+		DBMaxIdleConns: parseInt(getEnv("DB_MAX_IDLE_CONNS", "5"), 5),
+		DBCacheSize:    parseInt(getEnv("DB_CACHE_SIZE_KB", "64000"), 64000),
+		DBWalMode:      parseBool(getEnv("DB_WAL_MODE", "true")),
 	}
 
 	// Validate configuration
@@ -163,6 +177,23 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Validate database configuration
+	if c.DBPath == "" {
+		return fmt.Errorf("DB_PATH cannot be empty")
+	}
+	if c.DBMaxOpenConns <= 0 {
+		return fmt.Errorf("DB_MAX_OPEN_CONNS must be positive, got %d", c.DBMaxOpenConns)
+	}
+	if c.DBMaxIdleConns <= 0 {
+		return fmt.Errorf("DB_MAX_IDLE_CONNS must be positive, got %d", c.DBMaxIdleConns)
+	}
+	if c.DBMaxIdleConns > c.DBMaxOpenConns {
+		return fmt.Errorf("DB_MAX_IDLE_CONNS (%d) cannot exceed DB_MAX_OPEN_CONNS (%d)", c.DBMaxIdleConns, c.DBMaxOpenConns)
+	}
+	if c.DBCacheSize <= 0 {
+		return fmt.Errorf("DB_CACHE_SIZE_KB must be positive, got %d", c.DBCacheSize)
+	}
+
 	return nil
 }
 
@@ -170,10 +201,12 @@ func (c *Config) Validate() error {
 func (c *Config) String() string {
 	return fmt.Sprintf("Config{Port:%s, Host:%s, LogLevel:%s, AllowedOrigins:%v, "+
 		"ReadTimeout:%v, WriteTimeout:%v, IdleTimeout:%v, ReadHeaderTimeout:%v, "+
-		"ShutdownTimeout:%v, MaxHeaderBytes:%d}",
+		"ShutdownTimeout:%v, MaxHeaderBytes:%d, DBPath:%s, DBMaxOpenConns:%d, "+
+		"DBMaxIdleConns:%d, DBCacheSize:%dKB, DBWalMode:%v}",
 		c.Port, c.Host, c.LogLevel, c.AllowedOrigins,
 		c.ReadTimeout, c.WriteTimeout, c.IdleTimeout, c.ReadHeaderTimeout,
-		c.ShutdownTimeout, c.MaxHeaderBytes)
+		c.ShutdownTimeout, c.MaxHeaderBytes, c.DBPath, c.DBMaxOpenConns,
+		c.DBMaxIdleConns, c.DBCacheSize, c.DBWalMode)
 }
 
 // Helper functions

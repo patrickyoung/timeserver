@@ -5,7 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/yourorg/timeservice/pkg/metrics"
 	"github.com/yourorg/timeservice/pkg/model"
 )
 
@@ -26,18 +28,23 @@ type LocationRepository interface {
 
 // sqliteLocationRepository implements LocationRepository for SQLite
 type sqliteLocationRepository struct {
-	db *sql.DB
+	db      *sql.DB
+	metrics *metrics.Metrics
 }
 
 // NewLocationRepository creates a new SQLite-backed location repository
-func NewLocationRepository(db *sql.DB) LocationRepository {
+func NewLocationRepository(db *sql.DB, m *metrics.Metrics) LocationRepository {
 	return &sqliteLocationRepository{
-		db: db,
+		db:      db,
+		metrics: m,
 	}
 }
 
 // Create inserts a new location into the database
 func (r *sqliteLocationRepository) Create(ctx context.Context, loc *model.Location) error {
+	start := time.Now()
+	operation := "create"
+
 	// Validate the location
 	if err := loc.Validate(); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
@@ -58,7 +65,14 @@ func (r *sqliteLocationRepository) Create(ctx context.Context, loc *model.Locati
 		loc.UpdatedAt,
 	)
 
+	// Record metrics
+	duration := time.Since(start).Seconds()
+	r.metrics.DBQueryDuration.WithLabelValues(operation).Observe(duration)
+
 	if err != nil {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+		r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
+
 		// Check for unique constraint violation (SQLITE_CONSTRAINT)
 		if isSQLiteConstraintError(err) {
 			return ErrLocationExists
@@ -69,15 +83,21 @@ func (r *sqliteLocationRepository) Create(ctx context.Context, loc *model.Locati
 	// Get the auto-generated ID
 	id, err := result.LastInsertId()
 	if err != nil {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+		r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
 		return fmt.Errorf("failed to get insert id: %w", err)
 	}
 
+	r.metrics.DBQueriesTotal.WithLabelValues(operation, "success").Inc()
 	loc.ID = id
 	return nil
 }
 
 // GetByName retrieves a location by its name (case-insensitive)
 func (r *sqliteLocationRepository) GetByName(ctx context.Context, name string) (*model.Location, error) {
+	start := time.Now()
+	operation := "get"
+
 	query := `
 		SELECT id, name, timezone, description, created_at, updated_at
 		FROM locations
@@ -94,18 +114,29 @@ func (r *sqliteLocationRepository) GetByName(ctx context.Context, name string) (
 		&loc.UpdatedAt,
 	)
 
+	// Record metrics
+	duration := time.Since(start).Seconds()
+	r.metrics.DBQueryDuration.WithLabelValues(operation).Observe(duration)
+
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
+			r.metrics.DBQueriesTotal.WithLabelValues(operation, "not_found").Inc()
 			return nil, ErrLocationNotFound
 		}
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+		r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
 		return nil, fmt.Errorf("failed to query location: %w", err)
 	}
 
+	r.metrics.DBQueriesTotal.WithLabelValues(operation, "success").Inc()
 	return &loc, nil
 }
 
 // Update modifies an existing location
 func (r *sqliteLocationRepository) Update(ctx context.Context, name string, loc *model.Location) error {
+	start := time.Now()
+	operation := "update"
+
 	// Validate only the fields being updated
 	if err := model.ValidateTimezone(loc.Timezone); err != nil {
 		return fmt.Errorf("validation failed: %w", err)
@@ -128,50 +159,77 @@ func (r *sqliteLocationRepository) Update(ctx context.Context, name string, loc 
 		name,
 	)
 
+	// Record metrics
+	duration := time.Since(start).Seconds()
+	r.metrics.DBQueryDuration.WithLabelValues(operation).Observe(duration)
+
 	if err != nil {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+		r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
 		return fmt.Errorf("failed to update location: %w", err)
 	}
 
 	// Check if any rows were affected
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+		r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
 	if rowsAffected == 0 {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "not_found").Inc()
 		return ErrLocationNotFound
 	}
 
+	r.metrics.DBQueriesTotal.WithLabelValues(operation, "success").Inc()
 	return nil
 }
 
 // Delete removes a location by name
 func (r *sqliteLocationRepository) Delete(ctx context.Context, name string) error {
+	start := time.Now()
+	operation := "delete"
+
 	query := `
 		DELETE FROM locations
 		WHERE name = ? COLLATE NOCASE
 	`
 
 	result, err := r.db.ExecContext(ctx, query, name)
+
+	// Record metrics
+	duration := time.Since(start).Seconds()
+	r.metrics.DBQueryDuration.WithLabelValues(operation).Observe(duration)
+
 	if err != nil {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+		r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
 		return fmt.Errorf("failed to delete location: %w", err)
 	}
 
 	// Check if any rows were affected
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+		r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
 		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
 	if rowsAffected == 0 {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "not_found").Inc()
 		return ErrLocationNotFound
 	}
 
+	r.metrics.DBQueriesTotal.WithLabelValues(operation, "success").Inc()
 	return nil
 }
 
 // List retrieves all locations, ordered by name
 func (r *sqliteLocationRepository) List(ctx context.Context) ([]*model.Location, error) {
+	start := time.Now()
+	operation := "list"
+
 	query := `
 		SELECT id, name, timezone, description, created_at, updated_at
 		FROM locations
@@ -179,7 +237,14 @@ func (r *sqliteLocationRepository) List(ctx context.Context) ([]*model.Location,
 	`
 
 	rows, err := r.db.QueryContext(ctx, query)
+
+	// Record query duration
+	duration := time.Since(start).Seconds()
+	r.metrics.DBQueryDuration.WithLabelValues(operation).Observe(duration)
+
 	if err != nil {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+		r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
 		return nil, fmt.Errorf("failed to query locations: %w", err)
 	}
 	defer rows.Close()
@@ -196,12 +261,16 @@ func (r *sqliteLocationRepository) List(ctx context.Context) ([]*model.Location,
 			&loc.UpdatedAt,
 		)
 		if err != nil {
+			r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+			r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
 			return nil, fmt.Errorf("failed to scan location: %w", err)
 		}
 		locations = append(locations, &loc)
 	}
 
 	if err := rows.Err(); err != nil {
+		r.metrics.DBQueriesTotal.WithLabelValues(operation, "error").Inc()
+		r.metrics.DBErrorsTotal.WithLabelValues(operation).Inc()
 		return nil, fmt.Errorf("row iteration error: %w", err)
 	}
 
@@ -210,6 +279,7 @@ func (r *sqliteLocationRepository) List(ctx context.Context) ([]*model.Location,
 		locations = []*model.Location{}
 	}
 
+	r.metrics.DBQueriesTotal.WithLabelValues(operation, "success").Inc()
 	return locations, nil
 }
 

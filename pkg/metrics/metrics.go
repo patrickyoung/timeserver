@@ -24,6 +24,13 @@ type Metrics struct {
 	AuthDuration       *prometheus.HistogramVec
 	AuthTokensVerified *prometheus.CounterVec
 
+	// Database metrics
+	DBQueryDuration   *prometheus.HistogramVec
+	DBQueriesTotal    *prometheus.CounterVec
+	DBConnectionsOpen prometheus.Gauge
+	DBConnectionsIdle prometheus.Gauge
+	DBErrorsTotal     *prometheus.CounterVec
+
 	// Application metrics
 	BuildInfo *prometheus.GaugeVec
 }
@@ -142,6 +149,55 @@ func New(namespace string) *Metrics {
 				Help:      "Total number of tokens verified",
 			},
 			[]string{"status"},
+		),
+
+		// Database query duration histogram
+		DBQueryDuration: promauto.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: namespace,
+				Name:      "db_query_duration_seconds",
+				Help:      "Database query duration in seconds",
+				Buckets:   []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1},
+			},
+			[]string{"operation"},
+		),
+
+		// Database queries counter by operation and status
+		DBQueriesTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "db_queries_total",
+				Help:      "Total number of database queries",
+			},
+			[]string{"operation", "status"},
+		),
+
+		// Database connections currently open
+		DBConnectionsOpen: promauto.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "db_connections_open",
+				Help:      "Number of open database connections",
+			},
+		),
+
+		// Database connections currently idle
+		DBConnectionsIdle: promauto.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "db_connections_idle",
+				Help:      "Number of idle database connections",
+			},
+		),
+
+		// Database errors counter by operation
+		DBErrorsTotal: promauto.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "db_errors_total",
+				Help:      "Total number of database errors",
+			},
+			[]string{"operation"},
 		),
 
 		// Build info metric (always 1, labeled with version info)

@@ -13,8 +13,12 @@ import (
 
 	"github.com/yourorg/timeservice/internal/repository"
 	"github.com/yourorg/timeservice/pkg/db"
+	"github.com/yourorg/timeservice/pkg/metrics"
 	"github.com/yourorg/timeservice/pkg/model"
 )
+
+// testMetrics is a shared metrics instance for all tests to avoid duplicate registration
+var testMetrics = metrics.New("test_handler")
 
 // setupTestDB creates a temporary SQLite database for testing
 func setupTestDB(t *testing.T) (*sql.DB, func()) {
@@ -67,8 +71,8 @@ func TestLocationIntegration_FullCRUDWorkflow(t *testing.T) {
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	// Create repository and handler
-	repo := repository.NewLocationRepository(database)
+	// Create repository with shared test metrics
+	repo := repository.NewLocationRepository(database, testMetrics)
 	handler := NewLocationHandler(repo, newTestLogger())
 
 	// Test 1: Create a location
@@ -279,8 +283,8 @@ func TestLocationIntegration_ErrorScenarios(t *testing.T) {
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	// Create repository and handler
-	repo := repository.NewLocationRepository(database)
+	// Create repository with shared test metrics
+	repo := repository.NewLocationRepository(database, testMetrics)
 	handler := NewLocationHandler(repo, newTestLogger())
 
 	// Test 1: Duplicate location name
@@ -361,8 +365,8 @@ func TestLocationIntegration_ConcurrentRequests(t *testing.T) {
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	// Create repository and handler
-	repo := repository.NewLocationRepository(database)
+	// Create repository with shared test metrics
+	repo := repository.NewLocationRepository(database, testMetrics)
 	handler := NewLocationHandler(repo, newTestLogger())
 
 	// Create a location first
@@ -403,8 +407,8 @@ func TestLocationIntegration_CaseInsensitivity(t *testing.T) {
 	database, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	// Create repository and handler
-	repo := repository.NewLocationRepository(database)
+	// Create repository with shared test metrics
+	repo := repository.NewLocationRepository(database, testMetrics)
 	handler := NewLocationHandler(repo, newTestLogger())
 
 	// Create location with lowercase name

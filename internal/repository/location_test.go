@@ -10,8 +10,12 @@ import (
 	"time"
 
 	"github.com/yourorg/timeservice/pkg/db"
+	"github.com/yourorg/timeservice/pkg/metrics"
 	"github.com/yourorg/timeservice/pkg/model"
 )
+
+// testMetrics is a shared metrics instance for all tests to avoid duplicate registration
+var testMetrics = metrics.New("test_repository")
 
 // setupTestDB creates an in-memory SQLite database for testing
 func setupTestDB(t *testing.T) *sql.DB {
@@ -47,11 +51,18 @@ func setupTestDB(t *testing.T) *sql.DB {
 	return database
 }
 
-func TestCreate(t *testing.T) {
+// setupTestRepo creates a test repository with database and metrics
+func setupTestRepo(t *testing.T) LocationRepository {
+	t.Helper()
 	database := setupTestDB(t)
-	defer database.Close()
+	t.Cleanup(func() { database.Close() })
 
-	repo := NewLocationRepository(database)
+	// Use shared test metrics to avoid duplicate registration
+	return NewLocationRepository(database, testMetrics)
+}
+
+func TestCreate(t *testing.T) {
+	repo := setupTestRepo(t)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
@@ -139,10 +150,7 @@ func TestCreate(t *testing.T) {
 }
 
 func TestGetByName(t *testing.T) {
-	database := setupTestDB(t)
-	defer database.Close()
-
-	repo := NewLocationRepository(database)
+	repo := setupTestRepo(t)
 	ctx := context.Background()
 
 	// Setup: Create a test location
@@ -195,10 +203,7 @@ func TestGetByName(t *testing.T) {
 }
 
 func TestUpdate(t *testing.T) {
-	database := setupTestDB(t)
-	defer database.Close()
-
-	repo := NewLocationRepository(database)
+	repo := setupTestRepo(t)
 	ctx := context.Background()
 
 	// Setup: Create a test location
@@ -281,10 +286,7 @@ func TestUpdate(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	database := setupTestDB(t)
-	defer database.Close()
-
-	repo := NewLocationRepository(database)
+	repo := setupTestRepo(t)
 	ctx := context.Background()
 
 	t.Run("success", func(t *testing.T) {
@@ -353,10 +355,7 @@ func TestDelete(t *testing.T) {
 }
 
 func TestList(t *testing.T) {
-	database := setupTestDB(t)
-	defer database.Close()
-
-	repo := NewLocationRepository(database)
+	repo := setupTestRepo(t)
 	ctx := context.Background()
 
 	t.Run("empty database", func(t *testing.T) {
@@ -454,10 +453,7 @@ func TestList(t *testing.T) {
 }
 
 func TestContextCancellation(t *testing.T) {
-	database := setupTestDB(t)
-	defer database.Close()
-
-	repo := NewLocationRepository(database)
+	repo := setupTestRepo(t)
 
 	t.Run("create with cancelled context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -482,10 +478,7 @@ func TestContextCancellation(t *testing.T) {
 }
 
 func TestConcurrentAccess(t *testing.T) {
-	database := setupTestDB(t)
-	defer database.Close()
-
-	repo := NewLocationRepository(database)
+	repo := setupTestRepo(t)
 	ctx := context.Background()
 
 	// Create multiple goroutines that insert different locations
@@ -529,10 +522,7 @@ func TestConcurrentAccess(t *testing.T) {
 }
 
 func TestDescriptionHandling(t *testing.T) {
-	database := setupTestDB(t)
-	defer database.Close()
-
-	repo := NewLocationRepository(database)
+	repo := setupTestRepo(t)
 	ctx := context.Background()
 
 	t.Run("empty description", func(t *testing.T) {

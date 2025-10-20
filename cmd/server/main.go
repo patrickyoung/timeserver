@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -55,11 +56,14 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Initialize location repository
-		locationRepo := repository.NewLocationRepository(database)
+		// Initialize metrics for stdio mode (minimal, for database tracking)
+		metricsCollector := metrics.New("timeservice")
 
-		// Create MCP server with location repository (no metrics in stdio mode)
-		mcpServer := mcpserver.NewServer(logger, locationRepo)
+		// Initialize location repository with metrics
+		locationRepo := repository.NewLocationRepository(database, metricsCollector)
+
+		// Create MCP server with metrics and location repository
+		mcpServer := mcpserver.NewServerWithMetrics(logger, metricsCollector, locationRepo)
 
 		if err := server.ServeStdio(mcpServer); err != nil {
 			logger.Error("MCP stdio server error", "error", err)
@@ -90,6 +94,11 @@ func main() {
 		"idle_timeout", cfg.IdleTimeout,
 		"auth_enabled", cfg.AuthEnabled,
 		"oidc_issuer", cfg.OIDCIssuerURL,
+		"db_path", cfg.DBPath,
+		"db_max_open_conns", cfg.DBMaxOpenConns,
+		"db_max_idle_conns", cfg.DBMaxIdleConns,
+		"db_cache_size_kb", cfg.DBCacheSize,
+		"db_wal_mode", cfg.DBWalMode,
 	)
 
 	// Warn if wildcard CORS is configured (security risk)
@@ -152,8 +161,22 @@ func main() {
 		)
 	}
 
-	// Initialize database
-	dbConfig := db.DefaultConfig()
+	// Initialize database with configuration from config
+	dbConfig := &db.Config{
+		Path:         cfg.DBPath,
+		MaxOpenConns: cfg.DBMaxOpenConns,
+		MaxIdleConns: cfg.DBMaxIdleConns,
+		CacheSize:    -cfg.DBCacheSize, // Convert KB to negative pages for SQLite
+		BusyTimeout:  5000,              // 5 seconds
+		WalMode:      cfg.DBWalMode,
+		SyncMode:     "NORMAL",
+		ForeignKeys:  true,
+		JournalMode:  "WAL",
+	}
+	if !cfg.DBWalMode {
+		dbConfig.JournalMode = "DELETE"
+	}
+
 	database, err := db.Open(dbConfig, logger)
 	if err != nil {
 		logger.Error("failed to open database", "error", err)
@@ -167,12 +190,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize repositories
-	locationRepo := repository.NewLocationRepository(database)
-
 	// Initialize Prometheus metrics
 	metricsCollector := metrics.New("timeservice")
 	metricsCollector.SetBuildInfo(version.Version, runtime.Version())
+
+	// Initialize repositories with metrics
+	locationRepo := repository.NewLocationRepository(database, metricsCollector)
+
+	// Start goroutine to periodically update database connection pool metrics
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			stats := database.Stats()
+			metricsCollector.DBConnectionsOpen.Set(float64(stats.OpenConnections))
+			metricsCollector.DBConnectionsIdle.Set(float64(stats.Idle))
+		}
+	}()
 
 	// Create MCP server with metrics and location repository
 	mcpServer := mcpserver.NewServerWithMetrics(logger, metricsCollector, locationRepo)
@@ -279,6 +313,20 @@ func main() {
 		logger.Error("shutdown error", "error", err)
 		os.Exit(1)
 	}
+
+	// Log database statistics before closing
+	stats := database.Stats()
+	logger.Info("database statistics",
+		"max_open_connections", stats.MaxOpenConnections,
+		"open_connections", stats.OpenConnections,
+		"in_use", stats.InUse,
+		"idle", stats.Idle,
+		"wait_count", stats.WaitCount,
+		"wait_duration", stats.WaitDuration,
+		"max_idle_closed", stats.MaxIdleClosed,
+		"max_idle_time_closed", stats.MaxIdleTimeClosed,
+		"max_lifetime_closed", stats.MaxLifetimeClosed,
+	)
 
 	// Close database connection
 	if err := db.Close(database, logger); err != nil {

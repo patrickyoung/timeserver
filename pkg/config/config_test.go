@@ -421,3 +421,209 @@ func findSubstring(s, substr string) bool {
 	}
 	return false
 }
+
+func TestLoad_DatabaseDefaults(t *testing.T) {
+	// Save current environment
+	oldEnv := map[string]string{
+		"ALLOWED_ORIGINS":         os.Getenv("ALLOWED_ORIGINS"),
+		"ALLOW_CORS_WILDCARD_DEV": os.Getenv("ALLOW_CORS_WILDCARD_DEV"),
+		"DB_PATH":                 os.Getenv("DB_PATH"),
+		"DB_MAX_OPEN_CONNS":       os.Getenv("DB_MAX_OPEN_CONNS"),
+		"DB_MAX_IDLE_CONNS":       os.Getenv("DB_MAX_IDLE_CONNS"),
+		"DB_CACHE_SIZE_KB":        os.Getenv("DB_CACHE_SIZE_KB"),
+		"DB_WAL_MODE":             os.Getenv("DB_WAL_MODE"),
+	}
+	defer func() {
+		for k, v := range oldEnv {
+			if v == "" {
+				os.Unsetenv(k)
+			} else {
+				os.Setenv(k, v)
+			}
+		}
+	}()
+
+	// Set minimal required config
+	os.Setenv("ALLOW_CORS_WILDCARD_DEV", "true")
+	os.Unsetenv("DB_PATH")
+	os.Unsetenv("DB_MAX_OPEN_CONNS")
+	os.Unsetenv("DB_MAX_IDLE_CONNS")
+	os.Unsetenv("DB_CACHE_SIZE_KB")
+	os.Unsetenv("DB_WAL_MODE")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() with database defaults failed: %v", err)
+	}
+
+	if cfg.DBPath != "data/timeservice.db" {
+		t.Errorf("expected default DB_PATH data/timeservice.db, got %s", cfg.DBPath)
+	}
+
+	if cfg.DBMaxOpenConns != 25 {
+		t.Errorf("expected default DB_MAX_OPEN_CONNS 25, got %d", cfg.DBMaxOpenConns)
+	}
+
+	if cfg.DBMaxIdleConns != 5 {
+		t.Errorf("expected default DB_MAX_IDLE_CONNS 5, got %d", cfg.DBMaxIdleConns)
+	}
+
+	if cfg.DBCacheSize != 64000 {
+		t.Errorf("expected default DB_CACHE_SIZE_KB 64000, got %d", cfg.DBCacheSize)
+	}
+
+	if !cfg.DBWalMode {
+		t.Errorf("expected default DB_WAL_MODE true, got false")
+	}
+}
+
+func TestLoad_DatabaseCustomValues(t *testing.T) {
+	// Save current environment
+	oldEnv := map[string]string{
+		"ALLOWED_ORIGINS":         os.Getenv("ALLOWED_ORIGINS"),
+		"ALLOW_CORS_WILDCARD_DEV": os.Getenv("ALLOW_CORS_WILDCARD_DEV"),
+		"DB_PATH":                 os.Getenv("DB_PATH"),
+		"DB_MAX_OPEN_CONNS":       os.Getenv("DB_MAX_OPEN_CONNS"),
+		"DB_MAX_IDLE_CONNS":       os.Getenv("DB_MAX_IDLE_CONNS"),
+		"DB_CACHE_SIZE_KB":        os.Getenv("DB_CACHE_SIZE_KB"),
+		"DB_WAL_MODE":             os.Getenv("DB_WAL_MODE"),
+	}
+	defer func() {
+		for k, v := range oldEnv {
+			if v == "" {
+				os.Unsetenv(k)
+			} else {
+				os.Setenv(k, v)
+			}
+		}
+	}()
+
+	// Set custom database config
+	os.Setenv("ALLOW_CORS_WILDCARD_DEV", "true")
+	os.Setenv("DB_PATH", "/custom/path/db.sqlite")
+	os.Setenv("DB_MAX_OPEN_CONNS", "50")
+	os.Setenv("DB_MAX_IDLE_CONNS", "10")
+	os.Setenv("DB_CACHE_SIZE_KB", "128000")
+	os.Setenv("DB_WAL_MODE", "false")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() with custom database config failed: %v", err)
+	}
+
+	if cfg.DBPath != "/custom/path/db.sqlite" {
+		t.Errorf("expected DB_PATH /custom/path/db.sqlite, got %s", cfg.DBPath)
+	}
+
+	if cfg.DBMaxOpenConns != 50 {
+		t.Errorf("expected DB_MAX_OPEN_CONNS 50, got %d", cfg.DBMaxOpenConns)
+	}
+
+	if cfg.DBMaxIdleConns != 10 {
+		t.Errorf("expected DB_MAX_IDLE_CONNS 10, got %d", cfg.DBMaxIdleConns)
+	}
+
+	if cfg.DBCacheSize != 128000 {
+		t.Errorf("expected DB_CACHE_SIZE_KB 128000, got %d", cfg.DBCacheSize)
+	}
+
+	if cfg.DBWalMode {
+		t.Errorf("expected DB_WAL_MODE false, got true")
+	}
+}
+
+func TestValidate_InvalidDatabaseConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		modifier func(*Config)
+		want     string
+	}{
+		{
+			name: "empty DB_PATH",
+			modifier: func(c *Config) {
+				c.DBPath = ""
+			},
+			want: "DB_PATH cannot be empty",
+		},
+		{
+			name: "zero DB_MAX_OPEN_CONNS",
+			modifier: func(c *Config) {
+				c.DBMaxOpenConns = 0
+			},
+			want: "DB_MAX_OPEN_CONNS must be positive",
+		},
+		{
+			name: "negative DB_MAX_OPEN_CONNS",
+			modifier: func(c *Config) {
+				c.DBMaxOpenConns = -1
+			},
+			want: "DB_MAX_OPEN_CONNS must be positive",
+		},
+		{
+			name: "zero DB_MAX_IDLE_CONNS",
+			modifier: func(c *Config) {
+				c.DBMaxIdleConns = 0
+			},
+			want: "DB_MAX_IDLE_CONNS must be positive",
+		},
+		{
+			name: "negative DB_MAX_IDLE_CONNS",
+			modifier: func(c *Config) {
+				c.DBMaxIdleConns = -1
+			},
+			want: "DB_MAX_IDLE_CONNS must be positive",
+		},
+		{
+			name: "DB_MAX_IDLE_CONNS exceeds DB_MAX_OPEN_CONNS",
+			modifier: func(c *Config) {
+				c.DBMaxOpenConns = 10
+				c.DBMaxIdleConns = 20
+			},
+			want: "DB_MAX_IDLE_CONNS (20) cannot exceed DB_MAX_OPEN_CONNS (10)",
+		},
+		{
+			name: "zero DB_CACHE_SIZE_KB",
+			modifier: func(c *Config) {
+				c.DBCacheSize = 0
+			},
+			want: "DB_CACHE_SIZE_KB must be positive",
+		},
+		{
+			name: "negative DB_CACHE_SIZE_KB",
+			modifier: func(c *Config) {
+				c.DBCacheSize = -1
+			},
+			want: "DB_CACHE_SIZE_KB must be positive",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Config{
+				Port:              "8080",
+				LogLevel:          slog.LevelInfo,
+				AllowedOrigins:    []string{"*"},
+				ReadTimeout:       10 * time.Second,
+				WriteTimeout:      10 * time.Second,
+				IdleTimeout:       60 * time.Second,
+				ReadHeaderTimeout: 5 * time.Second,
+				ShutdownTimeout:   10 * time.Second,
+				MaxHeaderBytes:    1 << 20,
+				DBPath:            "data/timeservice.db",
+				DBMaxOpenConns:    25,
+				DBMaxIdleConns:    5,
+				DBCacheSize:       64000,
+				DBWalMode:         true,
+			}
+
+			tt.modifier(cfg)
+
+			err := cfg.Validate()
+			if err == nil {
+				t.Errorf("expected validation error, got nil")
+			} else if !contains(err.Error(), tt.want) {
+				t.Errorf("expected error containing %q, got %q", tt.want, err.Error())
+			}
+		})
+	}
+}
